@@ -1,0 +1,2037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quest Grader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #1d2433;
+  --muted: #5a6376;
+  --paper: #ffffff;
+  --desk: #eef1f5;
+  --line: #d6dbe3;
+  --line-strong: #b9c1cd;
+  --teal: #1d5c63;
+  --teal-ink: #ffffff;
+  --teal-soft: #e1eeef;
+  --hi: #ffe45c;
+  --hi-ink: #3d3300;
+  --red: #a8322b;
+  --red-soft: #fbe3e1;
+  --green: #2c6e49;
+  --green-soft: #ddf1e3;
+  --lv0: #d9f2df;
+  --lv1: #fff1c2;
+  --lv2: #fbdcdc;
+  --lv3: #e6e1f7;
+  --shadow: 0 1px 2px rgba(29, 36, 51, .08);
+  --radius: 8px;
+  --font: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e6e9ef;
+    --muted: #a3abba;
+    --paper: #1c212b;
+    --desk: #14181f;
+    --line: #2f3644;
+    --line-strong: #444d5e;
+    --teal: #5fb3b9;
+    --teal-ink: #0c1a1c;
+    --teal-soft: #1f3337;
+    --hi: #e8cc3a;
+    --hi-ink: #231e00;
+    --red: #f08a80;
+    --red-soft: #3b1f1d;
+    --green: #7fcf9c;
+    --green-soft: #1b3326;
+    --lv0: #1f3b2a;
+    --lv1: #3d3519;
+    --lv2: #45252a;
+    --lv3: #2d2846;
+    --shadow: none;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: var(--font); font-size: 15px; line-height: 1.45; color: var(--ink); background: var(--desk); font-variant-numeric: tabular-nums; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--teal); }
+h1, h2, h3, h4 { line-height: 1.2; margin: 0; }
+h2 { font-size: 1.25rem; }
+h3 { font-size: 1.05rem; }
+p { margin: 0; }
+.hint { color: var(--muted); font-size: .88rem; }
+.hidden { display: none !important; }
+:focus-visible { outline: 3px solid var(--teal); outline-offset: 2px; }
+
+/* top bar */
+.top { position: sticky; top: 0; z-index: 20; background: var(--paper); border-bottom: 1px solid var(--line); }
+.top-inner { max-width: 1240px; margin: 0 auto; padding: 12px 20px; display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand svg { flex: none; }
+.brand h1 { font-size: 1.2rem; }
+.brand .sub { color: var(--muted); font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; }
+.steps { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+.steps button { border: 1px solid transparent; background: none; padding: 8px 14px; border-radius: 999px; cursor: pointer; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.steps button .n { width: 22px; height: 22px; border-radius: 50%; display: inline-grid; place-items: center; font-size: .8rem; font-weight: 700; border: 1.5px solid currentColor; }
+.steps button[aria-selected="true"] { background: var(--teal); color: var(--teal-ink); }
+.steps button[aria-selected="true"] .n { border-color: var(--teal-ink); }
+.steps button:not([aria-selected="true"]):hover { border-color: var(--line); color: var(--ink); }
+.steps .count { font-size: .78rem; opacity: .85; }
+
+main { max-width: 1240px; margin: 0 auto; padding: 20px; }
+.tab { display: none; }
+.tab.active { display: block; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); }
+.card + .card { margin-top: 16px; }
+.grid2 .card + .card { margin-top: 0; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.card-head p { color: var(--muted); font-size: .88rem; }
+.span2 { grid-column: 1 / -1; }
+
+label.f { display: block; font-size: .85rem; font-weight: 700; margin: 10px 0 4px; }
+input[type=text], input[type=password], input[type=date], input[type=number], input[type=url], select, textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--paper);
+}
+textarea { resize: vertical; min-height: 70px; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row > .grow { flex: 1 1 180px; }
+.row > label.f { margin: 0; }
+
+.btn { border: 1px solid var(--line-strong); background: var(--paper); padding: 8px 14px; border-radius: 6px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.btn:hover { border-color: var(--ink); }
+.btn.primary { background: var(--teal); color: var(--teal-ink); border-color: var(--teal); font-weight: 700; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--red); }
+.btn.small { padding: 4px 10px; font-size: .85rem; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.linkbtn { background: none; border: none; color: var(--teal); cursor: pointer; padding: 0; text-decoration: underline; }
+
+/* chips */
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: .78rem; border: 1px solid var(--line); background: var(--desk); white-space: nowrap; }
+.chip.flag { background: var(--hi); color: var(--hi-ink); border-color: transparent; font-weight: 700; }
+.chip.ok { background: var(--green-soft); color: var(--green); border-color: transparent; }
+.chip.bad { background: var(--red-soft); color: var(--red); border-color: transparent; }
+.chip.info { background: var(--teal-soft); color: var(--teal); border-color: transparent; }
+
+/* rubric editor */
+.rubric-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.rubric-table th, .rubric-table td { border: 1px solid var(--line); padding: 6px; vertical-align: top; }
+.rubric-table th { background: var(--desk); text-align: left; font-size: .85rem; }
+.rubric-table textarea, .rubric-table input { border: none; padding: 4px; min-height: 0; background: transparent; width: 100%; resize: vertical; }
+.rubric-table td.crit { width: 18%; }
+.rubric-wrap { overflow-x: auto; }
+
+/* tasks */
+.period-task { border: 1px solid var(--line); border-radius: 6px; padding: 12px; margin-top: 10px; }
+.period-task h4 { font-size: .95rem; margin-bottom: 6px; }
+.task-opt { border-left: 3px solid var(--teal); padding-left: 10px; margin-top: 8px; }
+.task-opt .row input { font-weight: 700; }
+
+/* dropzone */
+.drop { border: 2px dashed var(--line-strong); border-radius: var(--radius); padding: 28px; text-align: center; background: var(--paper); cursor: pointer; }
+.drop.over { border-color: var(--teal); background: var(--teal-soft); }
+.drop strong { display: block; font-size: 1.05rem; margin-bottom: 4px; }
+
+/* file list */
+.files { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.files td, .files th { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.files th { font-size: .8rem; color: var(--muted); font-weight: 700; }
+.files td.fname { word-break: break-all; }
+
+/* progress */
+.progress { margin-top: 12px; }
+.bar { height: 8px; background: var(--desk); border-radius: 999px; overflow: hidden; border: 1px solid var(--line); }
+.bar > span { display: block; height: 100%; background: var(--teal); width: 0; transition: width .25s; }
+.log { font-size: .85rem; color: var(--muted); margin-top: 6px; min-height: 1.2em; }
+
+/* review */
+.toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.pills button { border: 1px solid var(--line-strong); background: var(--paper); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.pills button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.pills button .chip { margin-left: 4px; }
+.summary { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.rtable-wrap { overflow-x: auto; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); }
+.rtable { width: 100%; border-collapse: collapse; }
+.rtable th { text-align: left; font-size: .8rem; color: var(--muted); padding: 8px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--paper); }
+.rtable td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.rtable tr.main:hover td { background: var(--desk); }
+.rtable .who { font-weight: 700; }
+.rtable .who small { display: block; font-weight: 400; color: var(--muted); font-size: .82rem; }
+.rtable .grade { font-weight: 700; font-size: 1.05rem; }
+.score-sel { padding: 4px 6px; border-radius: 6px; border: 1px solid var(--line-strong); width: auto; min-width: 64px; }
+.score-sel.l0 { background: var(--lv0); }
+.score-sel.l1 { background: var(--lv1); }
+.score-sel.l2 { background: var(--lv2); }
+.score-sel.l3 { background: var(--lv3); }
+tr.detail > td { background: var(--desk); padding: 16px; }
+.detail-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.3fr); gap: 16px; }
+@media (max-width: 800px) { .detail-grid { grid-template-columns: 1fr; } }
+.thumbs { display: flex; flex-wrap: wrap; gap: 6px; }
+.thumbs img { width: 92px; height: 120px; object-fit: cover; object-position: top; border: 1px solid var(--line-strong); border-radius: 4px; cursor: zoom-in; background: #fff; }
+.doctext { white-space: pre-wrap; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 10px; max-height: 260px; overflow: auto; font-size: .88rem; margin-top: 8px; }
+.kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: .9rem; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; }
+.whys { margin: 6px 0 0; padding-left: 18px; font-size: .88rem; }
+
+/* unmatched tray */
+.tray { border: 2px solid var(--hi); background: var(--paper); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; }
+.tray-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; max-height: 560px; overflow: auto; margin-top: 10px; }
+.tray-item { border: 1px solid var(--line); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.tray-item .thumbs img { width: 70px; height: 90px; }
+.tray summary h3 { display: inline; }
+
+/* email */
+.mail-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.mail-table td, .mail-table th { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+.mail-list { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: 8px; }
+details > summary { cursor: pointer; font-weight: 700; }
+details[open] > summary { margin-bottom: 8px; }
+code, pre.code { font-family: Consolas, 'Courier New', monospace; font-size: .82rem; }
+pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow: auto; max-height: 240px; }
+
+/* lightbox / toast */
+.lightbox { position: fixed; inset: 0; background: rgba(10, 12, 18, .86); z-index: 50; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 10px; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 94vw; max-height: 84vh; background: #fff; border-radius: 4px; }
+.lightbox .lb-bar { color: #fff; display: flex; gap: 12px; align-items: center; }
+.lightbox .lb-bar button { background: rgba(255,255,255,.15); color: #fff; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 10px 18px; border-radius: 8px; z-index: 60; opacity: 0; pointer-events: none; transition: opacity .2s; max-width: 90vw; }
+.toast.show { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect x="5" y="3" width="20" height="26" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="9" y="7" width="20" height="26" rx="2" fill="var(--paper)" stroke="currentColor" stroke-width="2"/><path d="M13 16h12M13 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="12" y="25" width="14" height="5" rx="1" fill="var(--hi)"/></svg>
+      <div>
+        <h1>Quest Grader</h1>
+        <p class="sub" id="hdrAssign"></p>
+      </div>
+    </div>
+    <nav class="steps" role="tablist" aria-label="Steps">
+      <button role="tab" data-tab="setup" aria-selected="true"><span class="n">1</span>Set up</button>
+      <button role="tab" data-tab="upload" aria-selected="false"><span class="n">2</span>Upload <span class="count" id="cntFiles"></span></button>
+      <button role="tab" data-tab="review" aria-selected="false"><span class="n">3</span>Review <span class="count" id="cntReview"></span></button>
+      <button role="tab" data-tab="send" aria-selected="false"><span class="n">4</span>Export and email</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+<!-- ============ SETUP ============ -->
+<section class="tab active" id="tab-setup" role="tabpanel">
+  <div class="grid2">
+    <div class="card">
+      <div class="card-head"><h2>Assignment</h2><button class="btn small danger" id="btnNewAssign">Start a new assignment</button></div>
+      <label class="f" for="aTitle">Title</label>
+      <input type="text" id="aTitle" placeholder="IR Quest #2">
+      <div class="row">
+        <div class="grow"><label class="f" for="aDate">Date for eSchool</label><input type="date" id="aDate"></div>
+        <div class="grow"><label class="f" for="aPoints">Points</label><input type="number" id="aPoints" min="1" value="100"></div>
+        <div class="grow"><label class="f" for="aMin">Minimum passing %</label><input type="number" id="aMin" min="0" max="100" value="65"></div>
+      </div>
+      <p class="hint" style="margin-top:8px">Grades use the same conversion as the rubric grader: the lowest possible rubric total equals the minimum passing %, and the top total equals 100%.</p>
+      <p class="hint" id="convChart" style="margin-top:6px"></p>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Class rosters</h2><p id="rosterSummary"></p></div>
+      <p class="hint">Upload your roster workbook (.xlsx) or CSVs. Sheets or files with "Period 5" in the name are filed under that period. Student ID and email columns are used for eSchool and email.</p>
+      <div class="row" style="margin-top:10px">
+        <label class="btn" for="rosterInput">Upload roster</label>
+        <input type="file" id="rosterInput" accept=".xlsx,.xls,.csv,.tsv,.txt" multiple class="hidden">
+        <div class="grow"><input type="text" id="rosterPeriod" placeholder="Period for files that don't name one (optional)"></div>
+      </div>
+      <div id="rosterChips" class="row" style="margin-top:10px"></div>
+      <details style="margin-top:10px"><summary>See the full roster</summary><div id="rosterList" class="mail-list"></div>
+        <button class="btn small danger" id="btnClearRoster" style="margin-top:8px">Clear roster</button></details>
+    </div>
+
+    <div class="card span2">
+      <div class="card-head"><h2>Rubric</h2>
+        <div class="row">
+          <button class="btn small" id="btnAddCrit">Add row</button>
+          <button class="btn small" id="btnAddLevel">Add level</button>
+          <button class="btn small" id="btnRemoveLevel">Remove level</button>
+          <label class="btn small" for="rubricInput">Load rubric JSON</label>
+          <input type="file" id="rubricInput" accept=".json" class="hidden">
+        </div>
+      </div>
+      <p class="hint">Levels run from most points on the left to fewest on the right. You can load a rubric saved from the rubric grader.</p>
+      <div class="rubric-wrap" style="margin-top:10px"><table class="rubric-table" id="rubricTable"></table></div>
+    </div>
+
+    <div class="card span2">
+      <div class="card-head"><h2>Tasks by period</h2><p>Give each period its quest. Add a second option when a class gets a choice.</p></div>
+      <div id="taskList"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>How to grade</h2></div>
+      <label class="f" for="guidance">Guidance for Claude</label>
+      <textarea id="guidance" rows="9"></textarea>
+      <label class="f" for="offTask">When a student does a different quest than assigned</label>
+      <select id="offTask">
+        <option value="cap">Score Task Criteria at the lowest level and flag it</option>
+        <option value="asdone">Grade it against the quest they did and flag it</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>Claude connection</h2><span id="keyStatus"></span></div>
+      <label class="f" for="apiKey">Anthropic API key</label>
+      <div class="row"><div class="grow"><input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off"></div><button class="btn small" id="btnTestKey">Test</button></div>
+      <p class="hint" style="margin-top:4px">Stored only in this browser. Requests go straight from this page to Anthropic.</p>
+      <div class="row">
+        <div class="grow"><label class="f" for="model">Model</label>
+          <select id="model">
+            <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (recommended)</option>
+            <option value="claude-opus-5-5">Claude Opus 5.5 (slower, more careful)</option>
+            <option value="claude-sonnet-4-6">Claude Sonnet 4.6 (fallback)</option>
+            <option value="custom">Other model ID...</option>
+          </select></div>
+        <div class="grow hidden" id="customModelWrap"><label class="f" for="customModel">Model ID</label><input type="text" id="customModel" placeholder="claude-..."></div>
+        <div style="width:120px"><label class="f" for="parallel">At once</label><input type="number" id="parallel" min="1" max="8" value="3"></div>
+      </div>
+      <p class="hint" style="margin-top:8px" id="usageLine"></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ UPLOAD ============ -->
+<section class="tab" id="tab-upload" role="tabpanel">
+  <div class="grid2">
+    <div class="card span2">
+      <div class="card-head"><h2>Add student work</h2>
+        <div class="row"><label class="f" for="upPeriod" style="margin:0">These files are from</label>
+          <select id="upPeriod" style="width:auto"></select></div>
+      </div>
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose files to upload">
+        <strong>Drop zip files, PDFs, scans, or docs here</strong>
+        <span class="hint">or click to choose. Google Classroom zips, scanned stacks, photos, .docx and .pptx all work. Zips inside zips are opened too.</span>
+      </div>
+      <input type="file" id="fileInput" multiple class="hidden" accept=".zip,.pdf,.png,.jpg,.jpeg,.webp,.gif,.docx,.pptx,.txt">
+      <p class="hint" style="margin-top:8px">"Detect from file name" files each zip under the period in its name (like Period_5.zip). Use "Mixed stack" for scans with students from several periods.</p>
+      <div class="progress hidden" id="ingestProg"><div class="bar"><span></span></div><div class="log"></div></div>
+    </div>
+
+    <div class="card span2">
+      <div class="card-head"><h2>Sort and grade</h2>
+        <div class="row">
+          <button class="btn" id="btnSplit">Find names in scanned stacks</button>
+          <button class="btn primary" id="btnGradeAll">Sort and grade everything</button>
+          <button class="btn danger hidden" id="btnStop">Stop</button>
+        </div>
+      </div>
+      <p class="hint">Files named for a student are matched to the roster right away. Scans and unnamed files go to Claude, which reads the pages, splits stacks into students (names on the next page included), and then grades each student's work.</p>
+      <div class="progress hidden" id="runProg"><div class="bar"><span></span></div><div class="log"></div></div>
+    </div>
+
+    <div class="card span2">
+      <div class="card-head"><h2>Files</h2><div class="row"><span id="fileSummary" class="hint"></span><button class="btn small danger" id="btnClearFiles">Remove all files</button></div></div>
+      <div style="overflow-x:auto"><table class="files" id="fileTable"></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ REVIEW ============ -->
+<section class="tab" id="tab-review" role="tabpanel">
+  <div id="tray"></div>
+  <div class="toolbar">
+    <div class="pills" id="periodPills"></div>
+    <div class="pills" id="filterPills">
+      <button data-f="all" aria-pressed="true">Everyone</button>
+      <button data-f="look" aria-pressed="false">Needs a look</button>
+      <button data-f="none" aria-pressed="false">No work yet</button>
+    </div>
+    <div class="summary" id="reviewSummary"></div>
+  </div>
+  <div class="rtable-wrap"><table class="rtable" id="reviewTable"></table></div>
+</section>
+
+<!-- ============ SEND ============ -->
+<section class="tab" id="tab-send" role="tabpanel">
+  <div class="grid2">
+    <div class="card">
+      <div class="card-head"><h2>eSchool grades</h2></div>
+      <p class="hint">One CSV per period in the eSchool upload format. Students without a grade are left blank.</p>
+      <div id="csvButtons" class="row" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Student rubrics</h2></div>
+      <p class="hint">A one-page PDF per graded student with the highlighted rubric, row scores, total, and grade.</p>
+      <label class="row" style="margin-top:10px"><input type="checkbox" id="pdfComments" checked> Include the comment to the student</label>
+      <label class="row" style="margin-top:6px"><input type="checkbox" id="pdfBook" checked> Show the book title</label>
+      <div id="pdfButtons" class="row" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Other files</h2></div>
+      <div class="row">
+        <button class="btn" id="btnNotesCsv">Teacher notes (CSV)</button>
+        <button class="btn" id="btnRubricJson">Rubric for the rubric grader (JSON)</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="btnBackup">Back up grades</button>
+        <label class="btn" for="restoreInput">Restore a backup</label>
+        <input type="file" id="restoreInput" accept=".json" class="hidden">
+      </div>
+      <p class="hint" style="margin-top:8px">Grades and notes stay in this browser between visits. Uploaded files don't, so re-upload them if you want to see the work again later.</p>
+    </div>
+
+    <div class="card span2">
+      <div class="card-head"><h2>Email rubrics</h2><span id="mailStatus" class="hint"></span></div>
+      <p class="hint">Uses the same Rubric Mailer script as the rubric grader. Paste the connection code from the grader (Email Rubrics, then Copy connection code) and you're set.</p>
+      <div class="row" style="margin-top:8px">
+        <div class="grow"><label class="f" for="mailCode">Connection code or web app URL</label><input type="text" id="mailCode" placeholder="RM1:... or https://script.google.com/.../exec"></div>
+        <div class="grow"><label class="f" for="mailKey">Secret key (only if you pasted a URL)</label><input type="password" id="mailKey" autocomplete="off"></div>
+        <button class="btn" id="btnPing" style="align-self:flex-end">Check connection</button>
+      </div>
+      <div class="row">
+        <div class="grow"><label class="f" for="mailFrom">From name</label><input type="text" id="mailFrom"></div>
+        <div class="grow" style="flex-basis:340px"><label class="f" for="mailSubject">Subject</label><input type="text" id="mailSubject"></div>
+      </div>
+      <label class="f" for="mailBody">Message <span class="hint">({first}, {last}, and {assignment} fill in for each student)</span></label>
+      <textarea id="mailBody" rows="5"></textarea>
+      <div class="row" style="margin-top:10px">
+        <select id="mailPeriod" style="width:auto"></select>
+        <button class="btn small" id="btnMailAll">Check all</button>
+        <button class="btn small" id="btnMailNone">Uncheck all</button>
+        <span class="hint" id="mailCount"></span>
+        <span style="margin-left:auto"></span>
+        <button class="btn" id="btnMailTest">Send test to me</button>
+        <button class="btn primary" id="btnMailSend">Send to checked students</button>
+      </div>
+      <div class="mail-list"><table class="mail-table" id="mailTable"></table></div>
+      <details style="margin-top:12px"><summary>Don't have the mailer set up yet?</summary>
+        <ol class="hint" style="padding-left:18px">
+          <li>Go to script.google.com while signed in to your school account and click New project. Name it "Rubric Mailer".</li>
+          <li>Delete the starter code, paste the script below, and change the SECRET line to a long random phrase of your own. Click Save.</li>
+          <li>Deploy, then New deployment, then Web app. Set Execute as: Me and Who has access: Anyone. Authorize when asked.</li>
+          <li>Copy the Web app URL (it ends in /exec) into the box above, put your secret phrase in the key box, and click Check connection.</li>
+        </ol>
+        <pre class="code" id="mailerScript"></pre>
+        <button class="btn small" id="btnCopyScript">Copy script</button>
+      </details>
+    </div>
+  </div>
+</section>
+</main>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Page viewer">
+  <img id="lbImg" alt="">
+  <div class="lb-bar"><button id="lbPrev">Previous</button><span id="lbCap"></span><button id="lbNext">Next</button><button id="lbClose">Close</button></div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+'use strict';
+// ======================================================================
+// Quest Grader: batch-grades creative reading assignments from zips/scans
+// ======================================================================
+const CDN = {
+  pdfWorker: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+};
+const LS_KEY = 'questGrader:v1';
+const MAX_PDF_PAGES = 80;
+const IMG_MAX = 1200;
+const IMG_RE = /\.(png|jpe?g|webp|gif|bmp)$/i;
+
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+// ---------------- defaults ----------------
+// Card numbers from IR_Quest_Cards.pdf. Numbers print on the front of each sheet and cards on the back;
+// the sheets are landscape and flip on the long edge, so top and bottom swap (1 top-left backs the bottom-left card).
+const QUEST_CARDS = [
+  { n: 1, name: "Alternative Titles", text: "Create three new titles for the book OR one chapter that capture the core message. Include a one paragraph explanation about how these titles relate to the text." },
+  { n: 2, name: "Letter to the Author or Character", text: "Write a thoughtful letter asking burning questions about choices made in the plot, or share how a specific scene impacted your perspective." },
+  { n: 3, name: "Redesign the Cover", text: "Draw or digitally design a brand-new book jacket that reflects a hidden theme, turning point, or symbolic element from the story. Include a one paragraph explanation." },
+  { n: 4, name: "Character Mood Board", text: "Create a collage of images, colors, textures, and words that represent a character's inner emotional state or motivations at a specific point in the plot. Include a one paragraph explanation." },
+  { n: 5, name: "Text Message Chains", text: "Script a hypothetical text conversation between two characters during a high-stakes, intriguing or engaging moment in the plot. There should be at least 25 texts and a clear conclusion to the conversation." },
+  { n: 6, name: "Literary Scrapbooks", text: "Create 3-4 physical or digital scrapbook pages representing a character's journey, including \"artifacts\" like ticket stubs, maps, or letters relevant to the plot." },
+  { n: 7, name: "One-Pager Reflection", text: "Combine quotes, drawings, and personal reactions on a single sheet of paper to map out thoughts and thematic connections." },
+  { n: 8, name: "Book Hook", text: "On an index card, write the title, author, and genre on one side and a pitch (about a paragraph or two) to persuade a classmate to read or avoid the book on the other. You can include doodles/drawings, but avoid spoilers." },
+  { n: 9, name: "Character Soundtracks", text: "Pick five songs for a character in your book and write a paragraph explaining why you selected those songs." },
+  { n: 10, name: "Character Profile", text: "Choose one character and create a profile including a sketch, a favorite quote they said, a list of traits, internal dialogue and an explanation if they are static/dynamic." },
+  { n: 11, name: "Character Social Media Profiles", text: "Design a mock Facebook page, Instagram feed or Spotify playlist for a protagonist, including captions, images, song choices, etc. that reflect their internal conflicts, hobbies, relationships, etc." },
+  { n: 12, name: "Emoji Analysis", text: "Pick five emojis for a chapter that reflect the main mood/tone and include one paragraph explaining each choice." },
+  { n: 13, name: "Character Trading Card", text: "Create a collectible trading card for a major character. The front should include their name, illustration and \"character stats.\" The back should include strengths, weaknesses, motivation, conflict, important relationships, and a significant quotation." },
+  { n: 14, name: "Dear Diary", text: "Write a diary entry from a character's perspective immediately after an important event. Reveal things the character might think but not say aloud. Include details from the text that support your interpretation." },
+  { n: 15, name: "Setting Maps", text: "Create an illustrated/digital map of a fictional world or town from your book. Include a title, important landmarks and a key." },
+  { n: 16, name: "Acrostic Poem", text: "Choose one character and write an acrostic poem for them where each letter of their name aligns to an adjective with the same letter. Include a paragraph to explain why you chose these adjectives." },
+  { n: 17, name: "Author's Craft Hunt", text: "Find three examples of interesting choices the author makes, such as: figurative language, imagery, foreshadowing, symbolism, repetition, dialogue, flashback, or word choice. For each, explain in 3-4 sentences what effect each has on the reader." },
+  { n: 18, name: "Movie Casting Director", text: "Imagine your book is becoming a movie. Cast actors for 3-5 major characters. For each actor, explain why they would be a good fit based on the character's personality, appearance, motivations, or behavior." },
+  { n: 19, name: "Character Interview", text: "Write 8-10 interview questions for a character and answer them as that character. Ask questions that reveal deeper information about the character's choices, relationships, fears, motivations, and growth." },
+  { n: 20, name: "Most Important Quote", text: "Choose one important quotation from your book and explain: what is happening when it appears, what the quotation reveals, why the author may have included it and how it connects to a larger theme." },
+  { n: 21, name: "Alternative Titles", text: "Create three new titles for the book OR one chapter that capture the core message. Include a one paragraph explanation about how these titles relate to the text." },
+  { n: 22, name: "Letter to the Author or Character", text: "Write a thoughtful letter asking burning questions about choices made in the plot, or share how a specific scene impacted your perspective." },
+  { n: 23, name: "Redesign the Cover", text: "Draw or digitally design a brand-new book jacket that reflects a hidden theme, turning point, or symbolic element from the story. Include a one paragraph explanation." },
+  { n: 24, name: "Character Mood Board", text: "Create a collage of images, colors, textures, and words that represent a character's inner emotional state or motivations at a specific point in the plot. Include a one paragraph explanation." },
+  { n: 25, name: "Text Message Chains", text: "Script a hypothetical text conversation between two characters during a high-stakes, intriguing or engaging moment in the plot. There should be at least 25 texts and a clear conclusion to the conversation." },
+  { n: 26, name: "Literary Scrapbooks", text: "Create 3-4 physical or digital scrapbook pages representing a character's journey, including \"artifacts\" like ticket stubs, maps, or letters relevant to the plot." },
+  { n: 27, name: "One-Pager Reflection", text: "Combine quotes, drawings, and personal reactions on a single sheet of paper to map out thoughts and thematic connections." },
+  { n: 28, name: "Book Hook", text: "On an index card, write the title, author, and genre on one side and a pitch (about a paragraph or two) to persuade a classmate to read or avoid the book on the other. You can include doodles/drawings, but avoid spoilers." },
+  { n: 29, name: "Character Soundtracks", text: "Pick five songs for a character in your book and write a paragraph explaining why you selected those songs." },
+  { n: 30, name: "Character Profile", text: "Choose one character and create a profile including a sketch, a favorite quote they said, a list of traits, internal dialogue and an explanation if they are static/dynamic." },
+  { n: 31, name: "Character Social Media Profiles", text: "Design a mock Facebook page, Instagram feed or Spotify playlist for a protagonist, including captions, images, song choices, etc. that reflect their internal conflicts." },
+  { n: 32, name: "Emoji Analysis", text: "Pick five emojis for a chapter that reflect the main mood/tone and include one paragraph explaining each choice." },
+  { n: 33, name: "Emoji Analysis", text: "Pick five emojis for a chapter that reflect the main mood/tone and include one paragraph explaining each choice." }
+];
+
+const DEFAULT_RUBRIC = {
+  criteria: ['Creative Expression', 'Task Criteria'],
+  levels: ['Exceptional', 'Average', 'Needs Improvement'],
+  descriptions: {
+    '0_0': 'Goes above and beyond to creatively express their analytical interpretation of the task',
+    '0_1': 'Average creative expression of the task',
+    '0_2': 'Lack of creativity to express the task',
+    '1_0': 'Meets all requirements of the task',
+    '1_1': 'Meets most of the requirements of the task',
+    '1_2': 'Meets some of the requirements of the task'
+  }
+};
+
+const DEFAULT_GUIDANCE = `Grade in an easy-going way. These quests exist to show that students are actually doing their independent reading and putting some thought into the assignment. The work doesn't need to be amazing.
+
+Reward specific details that only come from reading the book: character names, particular events, page numbers, quotes, small moments. Polish, art skill, spelling, and handwriting matter much less than evidence of reading and real effort.
+
+A 3 means the student went above and beyond. A 2 is solid, ordinary work. A 1 means very little effort, very little of the task, or almost nothing that shows reading.
+
+Watch for signs that a student used AI or copied text instead of reading: adult-sounding polished phrasing, summaries that read like the back cover or a website, general statements with no specific details, or two different versions of the same work. It can be hard to tell, so flag it for me and explain why, but score the work as written.`;
+
+const DEFAULT_MAIL = {
+  url: '', key: '', fromName: 'Mr. Axelson',
+  subject: 'Your rubric: {assignment}',
+  body: 'Hi {first},\n\nAttached is your rubric for {assignment}. Look over your scores and the comment, and come see me if you have any questions.\n\nMr. Axelson'
+};
+
+function freshState() {
+  return {
+    v: 1,
+    settings: { apiKey: '', model: 'claude-sonnet-5-5', customModel: '', parallel: 3 },
+    assignment: { title: 'IR Quest', date: new Date().toISOString().slice(0, 10), points: 100, minPass: 65 },
+    rubric: JSON.parse(JSON.stringify(DEFAULT_RUBRIC)),
+    tasks: {},           // period -> [{name, text}]
+    guidance: DEFAULT_GUIDANCE,
+    offTask: 'cap',
+    roster: [],          // [{key, first, last, id, email, period, aliases:[]}]
+    results: {},         // studentKey -> result
+    sent: {},            // assignmentId -> {studentKey: iso}
+    mail: { ...DEFAULT_MAIL },
+    usage: { input: 0, output: 0, calls: 0 },
+    ui: { tab: 'setup', period: null, filter: 'all', upPeriod: 'auto' }
+  };
+}
+
+let S = loadState();
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return freshState();
+    const base = freshState();
+    const s = JSON.parse(raw);
+    return { ...base, ...s, settings: { ...base.settings, ...s.settings }, assignment: { ...base.assignment, ...s.assignment },
+      mail: { ...base.mail, ...s.mail }, usage: { ...base.usage, ...s.usage }, ui: { ...base.ui, ...s.ui } };
+  } catch (e) { console.warn('Could not read saved data', e); return freshState(); }
+}
+let saveTimer = null;
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(S)); }
+    catch (e) { toast('Could not save to this browser: ' + e.message); }
+  }, 150);
+}
+
+// Runtime (not persisted): uploaded documents and how their pages map to students
+const RT = {
+  docs: [],        // {id, name, path, period, mixed, kind, text, pages:[{url,w,h,ink,text}], words, blank, status, note, hashes}
+  parts: [],       // {id, docId, pages:[idx]|null, studentKey|null, source, aiName, kind, note, ignored}
+  hashes: new Set(),
+  stop: false, running: false,
+  open: null,      // expanded review row key
+  lb: { list: [], i: 0 }
+};
+
+// ---------------- helpers ----------------
+function toast(msg, ms = 3200) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), ms);
+}
+function download(name, blobOrText, type = 'text/csv') {
+  const blob = blobOrText instanceof Blob ? blobOrText : new Blob([blobOrText], { type: type + ';charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function csvCell(v) {
+  const s = String(v ?? '');
+  return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function toCsv(rows) { return rows.map(r => r.map(csvCell).join(',')).join('\n'); }
+function norm(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/['\u2019]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function toks(s) { return norm(s).split(' ').filter(Boolean); }
+function natCmp(a, b) { return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }); }
+function fnv(bytes) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16) + ':' + bytes.length;
+}
+function fmtDateMDY(iso) {
+  const [y, m, d] = String(iso || '').split('-').map(Number);
+  return y ? `${m}/${d}/${String(y).slice(2)}` : '';
+}
+function periodFrom(str) {
+  const m = String(str || '').match(/period[\s_\-]*0?(\d{1,2})(?!\d)/i);
+  return m ? Number(m[1]) : null;
+}
+function periods() {
+  const set = new Set(S.roster.map(s => s.period).filter(p => p != null));
+  Object.keys(S.tasks).forEach(p => set.add(Number(p)));
+  return Array.from(set).sort((a, b) => a - b);
+}
+function studentsIn(p) {
+  return S.roster.filter(s => s.period === p).sort((a, b) => natCmp(a.last + ' ' + a.first, b.last + ' ' + b.first));
+}
+function stu(key) { return S.roster.find(s => s.key === key); }
+function fullName(s) { return s ? `${s.first} ${s.last}` : ''; }
+function assignmentId() { return `${S.assignment.title}|${S.assignment.date}`; }
+function modelId() { return S.settings.model === 'custom' ? (S.settings.customModel || 'claude-sonnet-5-5') : S.settings.model; }
+
+// ---------------- grade math ----------------
+function nCrit() { return S.rubric.criteria.length; }
+function nLev() { return S.rubric.levels.length; }
+function pointsForLevel(li) { return nLev() - li; }
+function levelForPoints(pts) { return nLev() - pts; }
+function gradeFor(scores) {
+  if (!scores || scores.length !== nCrit() || scores.some(v => v == null || v === '' || isNaN(v))) return null;
+  const total = scores.reduce((a, b) => a + Number(b), 0);
+  const min = nCrit(), max = nCrit() * nLev();
+  const minPass = Number(S.assignment.minPass) || 0;
+  const pct = max === min ? 100 : minPass + (total - min) / (max - min) * (100 - minPass);
+  const pts = Number(S.assignment.points) || 100;
+  return Math.round(pct * pts / 100 * 10 + 1e-9) / 10;
+}
+function totalFor(scores) { return (scores || []).reduce((a, b) => a + (Number(b) || 0), 0); }
+
+// ---------------- roster import ----------------
+function splitName(full) {
+  const s = String(full || '').trim();
+  if (!s) return null;
+  if (s.includes(',')) { const [last, first] = s.split(',').map(x => x.trim()); return { first, last }; }
+  const parts = s.split(/\s+/);
+  if (parts.length === 1) return { first: parts[0], last: '' };
+  return { first: parts[0], last: parts.slice(1).join(' ') };
+}
+function cleanId(v) { return String(v ?? '').trim().replace(/\.0+$/, ''); }
+
+function ingestRosterRows(rows, label, fallbackPeriod) {
+  let h = -1, cols = null;
+  for (let r = 0; r < Math.min(rows.length, 8); r++) {
+    const cells = rows[r].map(c => String(c ?? '').trim().toLowerCase());
+    const idc = cells.findIndex(c => /^(student ?id|id|student ?#|id ?#|student number)$/.test(c));
+    const first = cells.findIndex(c => /^first( ?name)?$/.test(c));
+    const last = cells.findIndex(c => /^last( ?name)?$/.test(c));
+    const name = cells.findIndex(c => /^(name|student|student name|full name)$/.test(c));
+    if ((first >= 0 && last >= 0) || name >= 0) {
+      h = r;
+      cols = { id: idc, first, last, name,
+        email: cells.findIndex(c => /e-?mail/.test(c)),
+        period: cells.findIndex(c => /^(period|per\.?|class period)$/.test(c)) };
+      break;
+    }
+  }
+  if (h < 0) return 0;
+  const labelPeriod = periodFrom(label);
+  const fromSheet = labelPeriod != null;
+  let added = 0;
+  for (const row of rows.slice(h + 1)) {
+    const get = i => i >= 0 ? String(row[i] ?? '').trim() : '';
+    let first = get(cols.first), last = get(cols.last);
+    if ((!first || !last) && cols.name >= 0) { const n = splitName(get(cols.name)); if (n) { first = first || n.first; last = last || n.last; } }
+    if (!first && !last) continue;
+    if (/^(date|points)$/i.test(last) || /^(date|points)$/i.test(first)) continue;
+    const id = cleanId(get(cols.id));
+    const email = get(cols.email);
+    let period = labelPeriod ?? (get(cols.period) ? Number(String(get(cols.period)).replace(/\D/g, '')) : null) ?? fallbackPeriod;
+    if (period == null || isNaN(period)) period = fallbackPeriod;
+    if (period == null || isNaN(period)) continue;
+    upsertStudent({ first, last, id, email, period, pri: fromSheet ? 2 : 1 });
+    added++;
+  }
+  return added;
+}
+function upsertStudent(n) {
+  const key = n.id ? 'id:' + n.id : 'nm:' + norm(n.last + ' ' + n.first);
+  let s = S.roster.find(x => x.key === key) ||
+    (!n.id ? null : S.roster.find(x => !x.id && norm(x.last) === norm(n.last) && norm(x.first) === norm(n.first)));
+  if (!s) {
+    S.roster.push({ key, first: n.first, last: n.last, id: n.id, email: n.email, period: n.period, aliases: [], pri: n.pri });
+    return;
+  }
+  if (n.id && !s.id) { s.id = n.id; s.key = key; }
+  if (n.email && !s.email) s.email = n.email;
+  const takeNew = n.pri > (s.pri || 0);
+  if (norm(n.first) !== norm(s.first)) {
+    const keep = takeNew ? n.first : s.first, other = takeNew ? s.first : n.first;
+    s.first = keep;
+    if (!s.aliases.some(a => norm(a) === norm(other))) s.aliases.push(other);
+  }
+  if (takeNew) { s.period = n.period; s.last = n.last || s.last; s.pri = n.pri; if (n.email) s.email = n.email; }
+}
+async function importRosterFiles(files) {
+  const fb = $('#rosterPeriod').value.trim() ? Number($('#rosterPeriod').value.replace(/\D/g, '')) : null;
+  let total = 0;
+  for (const f of files) {
+    try {
+      let wb;
+      if (/\.xlsx?$/i.test(f.name)) wb = XLSX.read(await f.arrayBuffer());
+      else wb = XLSX.read(await f.text(), { type: 'string' });
+      for (const sn of wb.SheetNames) {
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, raw: false, defval: '' });
+        const label = wb.SheetNames.length > 1 ? sn : (periodFrom(sn) != null ? sn : f.name);
+        total += ingestRosterRows(rows, label, periodFrom(f.name) ?? fb);
+      }
+    } catch (e) { toast(`Couldn't read ${f.name}: ${e.message}`); }
+  }
+  save(); renderAll();
+  toast(total ? `Read ${total} roster rows. ${S.roster.length} students on file.` : 'No students found. Check that the file has name and period columns, or type a period in the box.');
+}
+
+// ---------------- file ingest ----------------
+async function blobToImage(blob) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image(); img.decoding = 'async'; img.src = url;
+    await img.decode();
+    return img;
+  } finally { setTimeout(() => URL.revokeObjectURL(url), 2000); }
+}
+function inkOf(canvas) {
+  const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+  const x = c.getContext('2d'); x.drawImage(canvas, 0, 0, 64, 64);
+  const d = x.getImageData(0, 0, 64, 64).data; let dark = 0;
+  for (let i = 0; i < d.length; i += 4) if ((d[i] * .3 + d[i + 1] * .59 + d[i + 2] * .11) < 170) dark++;
+  return dark / 4096;
+}
+function canvasFrom(src, maxDim = IMG_MAX) {
+  const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height;
+  const k = Math.min(1, maxDim / Math.max(w, h));
+  const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+  const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+async function imagePage(blob) {
+  const img = await blobToImage(blob);
+  const c = canvasFrom(img);
+  return { url: c.toDataURL('image/jpeg', 0.78), w: c.width, h: c.height, ink: inkOf(c), text: '' };
+}
+
+let pdfReady = null;
+function ensurePdfJs() {
+  if (!pdfReady) pdfReady = (async () => {
+    try {
+      const src = await (await fetch(CDN.pdfWorker)).text();
+      pdfjsLib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    } catch (e) { pdfjsLib.GlobalWorkerOptions.workerSrc = CDN.pdfWorker; }
+  })();
+  return pdfReady;
+}
+async function pdfPages(buf) {
+  await ensurePdfJs();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const pages = []; const n = Math.min(pdf.numPages, MAX_PDF_PAGES);
+  for (let i = 1; i <= n; i++) {
+    const page = await pdf.getPage(i);
+    const v1 = page.getViewport({ scale: 1 });
+    const scale = Math.min(2.5, IMG_MAX / Math.max(v1.width, v1.height));
+    const vp = page.getViewport({ scale });
+    const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    let text = '';
+    try { text = (await page.getTextContent()).items.map(t => t.str).join(' ').replace(/\s+/g, ' ').trim(); } catch (e) {}
+    pages.push({ url: c.toDataURL('image/jpeg', 0.78), w: c.width, h: c.height, ink: inkOf(c), text });
+    page.cleanup();
+  }
+  const more = pdf.numPages > n ? pdf.numPages - n : 0;
+  pdf.destroy();
+  return { pages, more };
+}
+function xmlText(xml, paraTag, textTag) {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const out = [];
+  const paras = doc.getElementsByTagName(paraTag);
+  for (const p of paras) {
+    let line = '';
+    const walk = n => {
+      for (const c of n.childNodes) {
+        if (c.nodeType !== 1) continue;
+        if (c.tagName === textTag) line += c.textContent;
+        else if (c.tagName === 'w:tab') line += '\t';
+        else if (c.tagName === 'w:br' || c.tagName === 'a:br') line += '\n';
+        else walk(c);
+      }
+    };
+    walk(p); out.push(line);
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+async function officeDoc(buf, kind) {
+  const z = await JSZip.loadAsync(buf);
+  let text = '';
+  if (kind === 'docx') {
+    const f = z.file('word/document.xml');
+    if (f) text = xmlText(await f.async('string'), 'w:p', 'w:t');
+  } else {
+    const slides = Object.keys(z.files).filter(n => /^ppt\/slides\/slide\d+\.xml$/.test(n)).sort(natCmp);
+    const parts = [];
+    for (const s of slides) parts.push(`[Slide ${s.match(/(\d+)\.xml/)[1]}]\n` + xmlText(await z.file(s).async('string'), 'a:p', 'a:t'));
+    text = parts.join('\n\n');
+  }
+  const mediaDir = kind === 'docx' ? 'word/media/' : 'ppt/media/';
+  const media = Object.keys(z.files).filter(n => n.startsWith(mediaDir) && IMG_RE.test(n)).sort(natCmp);
+  const pages = [];
+  for (const m of media.slice(0, 40)) {
+    try {
+      const b = await z.file(m).async('blob');
+      if (b.size < 1500) continue;
+      pages.push(await imagePage(new Blob([b], { type: /png$/i.test(m) ? 'image/png' : 'image/jpeg' })));
+    } catch (e) { /* skip unreadable embedded image */ }
+  }
+  return { text, pages };
+}
+function wordCount(t) { return (String(t || '').match(/[A-Za-z\u00C0-\u024F]{2,}/g) || []).length; }
+
+function addDoc(d) {
+  d.id = uid();
+  d.words = wordCount(d.text) + d.pages.reduce((a, p) => a + wordCount(p.text), 0);
+  const maxInk = d.pages.reduce((a, p) => Math.max(a, p.ink || 0), 0);
+  const hasMedia = d.kind === 'docx' || d.kind === 'pptx' ? d.pages.length > 0 : false;
+  d.blank = d.kind !== 'unsupported' && d.words < 4 && !hasMedia && maxInk < 0.006;
+  RT.docs.push(d);
+  return d;
+}
+
+async function ingestBlob(name, blob, ctx, report) {
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  const h = fnv(buf);
+  if (RT.hashes.has(h)) { report && report(`Skipped duplicate ${name}`); return; }
+  RT.hashes.add(h);
+  const period = ctx.mixed ? null : (ctx.auto ? (periodFrom(ctx.path + '/' + name) ?? ctx.period) : ctx.period);
+  const base = { name, path: ctx.path ? ctx.path + '/' + name : name, container: ctx.container || '', period, mixed: !!ctx.mixed, text: '', pages: [], kind: ext };
+  report && report(`Reading ${name}`);
+  try {
+    if (ext === 'zip') {
+      const zip = await JSZip.loadAsync(buf);
+      const entries = Object.values(zip.files).filter(e => !e.dir && !/(^|\/)(__MACOSX|\.)/.test(e.name) && !/\.ds_store$/i.test(e.name));
+      const zPeriod = ctx.mixed ? null : (ctx.auto ? (periodFrom(name) ?? ctx.period) : ctx.period);
+      const childCtx = { ...ctx, period: zPeriod, path: base.path, depth: (ctx.depth || 0) + 1 };
+      const imgs = entries.filter(e => IMG_RE.test(e.name)).sort((a, b) => natCmp(a.name, b.name));
+      const others = entries.filter(e => !IMG_RE.test(e.name)).sort((a, b) => natCmp(a.name, b.name));
+      for (const e of others) {
+        if (RT.stop) return;
+        const nm = e.name.split('/').pop();
+        await ingestBlob(nm, await e.async('blob'), { ...childCtx, path: base.path + '/' + e.name.split('/').slice(0, -1).join('/'), container: ctx.depth ? name : (ctx.container || '') }, report);
+      }
+      if (imgs.length) {
+        if (ctx.depth) {
+          // images inside a nested zip belong together (one student's scanned pages)
+          const d = { ...base, kind: 'images', period: zPeriod };
+          for (const e of imgs) {
+            const b = await e.async('uint8array'); const hh = fnv(b);
+            if (RT.hashes.has(hh)) continue; RT.hashes.add(hh);
+            try { d.pages.push(await imagePage(new Blob([b]))); } catch (er) { /* skip */ }
+          }
+          if (d.pages.length) addDoc(d);
+        } else {
+          for (const e of imgs) await ingestBlob(e.name.split('/').pop(), await e.async('blob'), { ...childCtx, path: base.path + '/' + e.name.split('/').slice(0, -1).join('/') }, report);
+        }
+      }
+      return;
+    }
+    if (ext === 'pdf') {
+      const { pages, more } = await pdfPages(buf);
+      const d = addDoc({ ...base, kind: 'pdf', pages });
+      if (more) d.note = `Only the first ${MAX_PDF_PAGES} pages were read (${more} more in the file).`;
+      return;
+    }
+    if (ext === 'docx' || ext === 'pptx') { const r = await officeDoc(buf, ext); addDoc({ ...base, ...r, kind: ext }); return; }
+    if (IMG_RE.test(name)) { addDoc({ ...base, kind: 'image', pages: [await imagePage(new Blob([buf]))] }); return; }
+    if (/^(txt|md|csv)$/.test(ext)) { addDoc({ ...base, kind: 'text', text: new TextDecoder().decode(buf) }); return; }
+    addDoc({ ...base, kind: 'unsupported', note: `Can't read .${ext} files. Save it as PDF or an image and upload it again.` });
+  } catch (e) {
+    console.error(e);
+    addDoc({ ...base, kind: 'unsupported', note: `Couldn't open this file: ${e.message}` });
+  }
+}
+
+// ---------------- matching files to students ----------------
+const ROMAN = new Set(['ii', 'iii', 'iv', 'jr', 'sr']);
+function scoreStudent(st, tset, tarr) {
+  const lastT = toks(st.last).filter(t => !ROMAN.has(t));
+  if (!lastT.length) return 0;
+  const lastFull = lastT.every(t => tset.has(t)) || tset.has(lastT.join(''));
+  const firsts = [st.first, ...(st.aliases || [])].map(f => toks(f)[0]).filter(Boolean);
+  const firstFull = firsts.some(f => tset.has(f));
+  const firstPre = firsts.some(f => tarr.some(t => t.length >= 3 && f.length >= 3 && (t.startsWith(f) || f.startsWith(t))));
+  const lastInit = tset.has(lastT[0][0]);
+  if (lastFull && firstFull) return 10;
+  if (lastFull && firstPre) return 9;
+  if (firstFull && lastInit) return 7;
+  if (lastFull) return 6;
+  if (firstFull) return 4;
+  return 0;
+}
+const NOISE = /\b(ir|quest|reading|english|copy|of|final|draft|the|and|by|for|p\d|\d+)\b/g;
+// Returns {key, score} for a single confident match, {multi:[keys]} when the text names several students, or null.
+function matchText(text, period, minScore) {
+  const tarr = toks(String(text).replace(/_/g, ' ')).filter(t => !/^\d+$/.test(t));
+  const tset = new Set(tarr);
+  const pool = period != null ? S.roster.filter(s => s.period === period) : S.roster;
+  const scored = pool.map(s => ({ key: s.key, score: scoreStudent(s, tset, tarr) })).filter(x => x.score >= minScore);
+  if (!scored.length) return null;
+  const strong = scored.filter(x => x.score >= 9);
+  if (strong.length > 1) return { multi: strong.map(x => x.key) };
+  scored.sort((a, b) => b.score - a.score);
+  if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+  return scored[0];
+}
+function matchDoc(d) {
+  const label = (d.container ? d.container + ' ' : '') + d.name.replace(/\.[a-z0-9]+$/i, '');
+  let m = matchText(label, d.period, 4);
+  if (m && m.multi) return m;
+  if (!m && d.period != null) { m = matchText(label, null, 7); if (m && m.multi) return m; }
+  if (!m && d.period == null) m = matchText(label, null, 6);
+  if (m) return { ...m, how: 'file name' };
+  const head = (d.text || d.pages.map(p => p.text).join(' ')).slice(0, 500);
+  if (head) {
+    let t = matchText(head, d.period, 9) || matchText(head, null, 10);
+    if (t && !t.multi) return { ...t, how: 'name in the document' };
+  }
+  return null;
+}
+
+// After new docs arrive: assign the ones we can, leave the rest for Claude
+function autoAssign() {
+  for (const d of RT.docs) {
+    if (d.assigned) continue;
+    d.assigned = true;
+    if (d.kind === 'unsupported') { d.status = 'unsupported'; continue; }
+    const m = matchDoc(d);
+    if (m && m.multi) { d.status = 'stack'; d.note = (d.note ? d.note + ' ' : '') + 'Names several students.'; continue; }
+    if (d.blank) {
+      d.status = 'blank';
+      if (m) { d.matchKey = m.key; RT.parts.push({ id: uid(), docId: d.id, pages: null, studentKey: m.key, source: m.how, kind: 'blank' }); }
+      continue;
+    }
+    if (m) {
+      d.status = 'matched'; d.matchKey = m.key;
+      RT.parts.push({ id: uid(), docId: d.id, pages: null, studentKey: m.key, source: m.how, kind: 'work' });
+    } else d.status = 'stack';
+  }
+}
+function partsFor(key) { return RT.parts.filter(p => p.studentKey === key && !p.ignored); }
+function workParts(key) { return partsFor(key).filter(p => p.kind === 'work'); }
+function unassignedParts() { return RT.parts.filter(p => !p.studentKey && !p.ignored); }
+function partPages(p) {
+  const d = RT.docs.find(x => x.id === p.docId); if (!d) return [];
+  const idx = p.pages || d.pages.map((_, i) => i);
+  return idx.map(i => ({ ...d.pages[i], doc: d, n: i + 1 })).filter(x => x.url);
+}
+function partSig(key) { return workParts(key).map(p => p.docId + ':' + (p.pages || []).join('.')).sort().join('|'); }
+function needsGrading(key) {
+  const w = workParts(key); if (!w.length) return false;
+  const r = S.results[key];
+  return !r || r.status === 'error' || (r.sig !== partSig(key) && !r.edited);
+}
+// ---------------- Claude API ----------------
+// Some models refuse a forced tool_choice. When that happens we switch that model to
+// tool_choice "auto", tell it plainly to use the tool, and read JSON from text as a backup.
+const AUTO_TOOL_MODELS = new Set();
+function parseJsonFromText(t) {
+  const s = String(t || '').replace(/```(?:json)?/gi, '');
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b <= a) return null;
+  try { return JSON.parse(s.slice(a, b + 1)); } catch (e) { return null; }
+}
+async function callClaude({ system, content, tool, maxTokens = 4000 }) {
+  const key = S.settings.apiKey.trim();
+  if (!key) throw new Error('Add your Anthropic API key on the Set up tab.');
+  const model = modelId();
+  const body = {
+    model, max_tokens: maxTokens, temperature: 0.2,
+    system: [{ type: 'text', text: system + `\n\nAlways answer by calling the ${tool.name} tool exactly once. Do not reply with plain text.`, cache_control: { type: 'ephemeral' } }],
+    tools: [tool],
+    tool_choice: AUTO_TOOL_MODELS.has(model) ? { type: 'auto' } : { type: 'tool', name: tool.name },
+    messages: [{ role: 'user', content }]
+  };
+  let lastErr;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    if (RT.stop) throw new Error('Stopped');
+    let res;
+    try {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify(body)
+      });
+    } catch (e) { lastErr = new Error('Network error reaching Anthropic: ' + e.message); await sleep(1500 * 2 ** attempt); continue; }
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const u = data.usage || {};
+      S.usage.input += (u.input_tokens || 0) + (u.cache_read_input_tokens || 0) + (u.cache_creation_input_tokens || 0);
+      S.usage.output += u.output_tokens || 0; S.usage.calls++; save(); renderUsage();
+      const block = (data.content || []).find(b => b.type === 'tool_use');
+      if (block) return block.input;
+      const parsed = parseJsonFromText((data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n'));
+      if (parsed) return parsed;
+      if (data.stop_reason === 'max_tokens' && body.max_tokens < 16000) { body.max_tokens = Math.min(16000, body.max_tokens * 2); continue; }
+      throw new Error('Claude answered without filling in the form. Try again.');
+    }
+    const msg = (data.error && data.error.message) || res.statusText || ('HTTP ' + res.status);
+    if (res.status === 400 && /tool_choice/i.test(msg) && body.tool_choice.type !== 'auto') {
+      AUTO_TOOL_MODELS.add(model); body.tool_choice = { type: 'auto' }; continue;
+    }
+    if (res.status === 400 && /temperature/i.test(msg) && 'temperature' in body) { delete body.temperature; continue; }
+    if ([429, 500, 502, 503, 529].includes(res.status)) { lastErr = new Error(msg); await sleep(2000 * 2 ** attempt); continue; }
+    if (res.status === 401) throw new Error('The API key was rejected. Check it on the Set up tab.');
+    if (res.status === 404 || /model/i.test(msg) && res.status === 400) throw new Error(`Model "${model}": ${msg}`);
+    throw new Error(msg);
+  }
+  throw lastErr || new Error('Claude did not respond.');
+}
+function imgBlock(url) {
+  const [head, data] = url.split(',');
+  return { type: 'image', source: { type: 'base64', media_type: head.includes('png') ? 'image/png' : 'image/jpeg', data } };
+}
+async function shrink(url, maxDim, q = 0.62) {
+  const img = new Image(); img.src = url; await img.decode();
+  if (Math.max(img.naturalWidth, img.naturalHeight) <= maxDim) return url;
+  return canvasFrom(img, maxDim).toDataURL('image/jpeg', q);
+}
+async function runPool(items, worker, onDone) {
+  const n = Math.max(1, Math.min(8, Number(S.settings.parallel) || 3));
+  let i = 0, done = 0;
+  const next = async () => {
+    while (i < items.length && !RT.stop) {
+      const item = items[i++];
+      try { await worker(item); } catch (e) { console.error(e); }
+      done++; onDone && onDone(done, items.length);
+    }
+  };
+  await Promise.all(Array.from({ length: n }, next));
+}
+
+// ---------------- splitting scanned stacks ----------------
+function rosterLines(period) {
+  const ps = period != null ? [period] : periods();
+  return ps.map(p => `Period ${p}: ` + studentsIn(p).map(s => `${s.last}, ${s.first}${s.aliases.length ? ' (' + s.aliases.join('/') + ')' : ''}`).join('; ')).join('\n');
+}
+const SPLIT_TOOL = {
+  name: 'sort_pages',
+  description: 'Record which pages belong to which student.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      segments: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            pages: { type: 'array', items: { type: 'integer' }, description: 'Page numbers in this segment, in order.' },
+            roster_name: { type: ['string', 'null'], description: 'The matching roster entry copied exactly as "Last, First", or null if you cannot tell.' },
+            period: { type: ['integer', 'null'] },
+            name_as_written: { type: ['string', 'null'], description: 'The name exactly as the student wrote it, if any.' },
+            kind: { type: 'string', enum: ['work', 'name_only', 'blank', 'other_assignment'] },
+            note: { type: 'string', description: 'Short note for the teacher, or empty.' }
+          },
+          required: ['pages', 'roster_name', 'kind']
+        }
+      }
+    },
+    required: ['segments']
+  }
+};
+async function splitDoc(d) {
+  const pages = d.pages.length ? d.pages : [];
+  const maxDim = pages.length > 30 ? 750 : pages.length > 12 ? 900 : 1100;
+  const content = [];
+  if (pages.length) {
+    for (let i = 0; i < pages.length; i++) {
+      content.push({ type: 'text', text: `Page ${i + 1}` + (pages[i].text ? ` (typed text: ${pages[i].text.slice(0, 600)})` : '') });
+      content.push(imgBlock(await shrink(pages[i].url, maxDim)));
+    }
+  }
+  if (d.text) content.push({ type: 'text', text: `Text from the file:\n${d.text.slice(0, 6000)}` });
+  content.push({ type: 'text', text: `File name: ${d.name}\nSort these ${pages.length || 1} page(s).` });
+  const system = `You sort student work for a 7th grade teacher before it is graded. The assignment is "${S.assignment.title}", a creative response to the student's independent reading book.
+
+You will see the numbered pages of one uploaded file. It may hold one student's work or a stack of scans from many students in a row. Group the pages into one segment per student and identify each student from the roster below.
+
+How to find names:
+- Names are usually handwritten at the top or bottom, or on the back of a sheet. Because backs are scanned as separate pages, a name often appears on the page right after (or right before) the work it belongs to. A page with only a name, period, or date belongs with the work next to it from the same student. Give it its own segment with kind "name_only" only if you can't tell which work it goes with.
+- Students may use nicknames, initials, or just a first name. Pick the roster entry that fits, considering the period if one is written.
+- Consecutive pages with the same handwriting, book, and paper usually belong together.
+- If you can't tell whose work it is, set roster_name to null and describe what you see in the note (book title, any partial name).
+
+Use kind "blank" for empty pages and "other_assignment" for pages that are clearly a different assignment (a worksheet, notes, or another class's work, not a creative response to their reading book).
+Every page number must appear in exactly one segment.
+
+ROSTER
+${rosterLines(d.period)}`;
+  const out = await callClaude({ system, content, tool: SPLIT_TOOL, maxTokens: 6000 });
+  const segs = Array.isArray(out.segments) ? out.segments : [];
+  // drop any existing parts for this doc, then add the new segments
+  RT.parts = RT.parts.filter(p => p.docId !== d.id);
+  const seen = new Set();
+  for (const sg of segs) {
+    const idx = (sg.pages || []).map(n => Number(n) - 1).filter(i => i >= 0 && i < Math.max(1, pages.length) && !seen.has(i));
+    idx.forEach(i => seen.add(i));
+    if (!idx.length && pages.length) continue;
+    let key = null;
+    if (sg.roster_name) {
+      const n = splitName(sg.roster_name);
+      const hit = S.roster.filter(s => norm(s.last) === norm(n.last) && (norm(s.first) === norm(n.first) || s.aliases.some(a => norm(a) === norm(n.first))));
+      if (hit.length === 1) key = hit[0].key;
+      else if (hit.length > 1 && sg.period != null) key = (hit.find(s => s.period === sg.period) || {}).key || null;
+      if (!key) { const m = matchText(`${n.first} ${n.last}`, sg.period ?? null, 9) || matchText(`${n.first} ${n.last}`, null, 9); if (m && !m.multi) key = m.key; }
+    }
+    if (!key && sg.name_as_written) { const m = matchText(sg.name_as_written, sg.period ?? d.period, 7); if (m && !m.multi) key = m.key; }
+    const kind = sg.kind === 'blank' ? 'blank' : sg.kind === 'other_assignment' ? 'other' : 'work';
+    RT.parts.push({ id: uid(), docId: d.id, pages: pages.length ? idx : null, studentKey: kind === 'other' ? null : key, source: 'Claude read the pages',
+      aiName: sg.name_as_written || sg.roster_name || '', kind, note: sg.note || '', ignored: kind === 'blank' && !key });
+  }
+  // pages Claude skipped go to the unmatched tray
+  const missed = pages.map((_, i) => i).filter(i => !seen.has(i));
+  if (missed.length) RT.parts.push({ id: uid(), docId: d.id, pages: missed, studentKey: null, source: 'not sorted', aiName: '', kind: 'work', note: 'Claude did not place these pages.' });
+  // a name-only segment next to work: let the student's name-only page ride along (kept as work so it shows in review)
+  d.status = 'split';
+}
+
+// ---------------- grading ----------------
+const FLAG_TYPES = {
+  possible_ai: 'Possible AI', copied_text: 'Copied text', off_task: 'Different quest', incomplete: 'Incomplete',
+  spoilers: 'Spoilers', content_concern: 'Check content', name_mismatch: 'Name mismatch', two_versions: 'Two versions', other: 'Take a look'
+};
+function gradeTool() {
+  return {
+    name: 'record_grade',
+    description: 'Record the rubric scores and notes for this student.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name_on_work: { type: ['string', 'null'], description: 'Name written on the work, or null if none.' },
+        book_title: { type: ['string', 'null'] },
+        task_done: { type: 'string', description: 'Which quest the student actually did, in a few words.' },
+        on_task: { type: 'boolean', description: 'True if the work is one of the quests assigned to this period.' },
+        is_blank: { type: 'boolean', description: 'True if there is no real work to grade (empty template, only a name).' },
+        scores: {
+          type: 'array', minItems: nCrit(), maxItems: nCrit(),
+          items: {
+            type: 'object',
+            properties: {
+              criterion: { type: 'string' },
+              points: { type: 'integer', minimum: 1, maximum: nLev() },
+              why: { type: 'string', description: 'One sentence explaining the score.' }
+            },
+            required: ['criterion', 'points', 'why']
+          }
+        },
+        reading_evidence: { type: 'string', description: 'The specific details that show the student read the book, or "none".' },
+        flags: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { type: { type: 'string', enum: Object.keys(FLAG_TYPES) }, note: { type: 'string' } },
+            required: ['type', 'note']
+          }
+        },
+        teacher_note: { type: 'string' },
+        student_comment: { type: 'string' }
+      },
+      required: ['book_title', 'task_done', 'on_task', 'is_blank', 'scores', 'reading_evidence', 'flags', 'teacher_note', 'student_comment']
+    }
+  };
+}
+function taskBlock(period) {
+  const ts = (S.tasks[period] || []).filter(t => (t.text || t.name || '').trim());
+  if (!ts.length) return 'No quest text was entered for this period. Judge whether the work is a thoughtful creative response to the student\'s reading.';
+  if (ts.length === 1) return `${ts[0].name ? ts[0].name + ': ' : ''}${ts[0].text}`;
+  return 'Students could choose one of these:\n' + ts.map((t, i) => `Option ${i + 1}. ${t.name ? t.name + ': ' : ''}${t.text}`).join('\n');
+}
+function rubricBlock() {
+  const L = S.rubric.levels;
+  return S.rubric.criteria.map((c, ci) => `${c}\n` + L.map((l, li) => `  ${pointsForLevel(li)} points (${l}): ${S.rubric.descriptions[ci + '_' + li] || ''}`).join('\n')).join('\n');
+}
+function gradeSystem(period) {
+  const off = S.offTask === 'asdone'
+    ? 'If the student did a different quest than the one assigned, grade the work against the quest they actually did, set on_task to false, and add an off_task flag naming what they did.'
+    : `If the student did a different quest than the one assigned, set on_task to false, add an off_task flag naming what they did, and give "${S.rubric.criteria.find(c => /task/i.test(c)) || 'the task criterion'}" the lowest score. Score the other rows on the work itself.`;
+  return `You are helping Mr. Axelson, a 7th grade ELA teacher at a public middle school, grade "${S.assignment.title}", a creative response students make about their independent reading book. You will see one student's submission: scans, photos, slides, or text from their document. Record the grade with the record_grade tool.
+
+THE QUEST FOR PERIOD ${period}
+${taskBlock(period)}
+
+RUBRIC (whole points only, ${nLev()} is highest and 1 is lowest)
+${rubricBlock()}
+
+HOW MR. AXELSON GRADES
+${S.guidance}
+
+DIFFERENT QUEST
+${off}
+
+RULES
+- Score only what is actually in the submission. Don't invent strengths or problems.
+- Handwriting, spelling, and scan quality don't lower scores unless you truly can't read the work.
+- If there is no real work (an empty template, or only a name), set is_blank to true, give every row 1 point, and say so in the teacher note.
+- Flags are for the teacher only. Flag possible AI use or copied text, a different quest, missing parts, spoilers when the quest says to avoid them, anything the teacher should look at for the student's wellbeing or school-appropriateness, a name on the work that doesn't match the student, or two different versions of the same work. Explain each flag in one sentence. Still score the work as written.
+- teacher_note: two or three plain sentences for Mr. Axelson using the student's first name: what they made, what shows they read, and anything to check.
+- student_comment: two or three sentences written by Mr. Axelson to the student, in first person, starting with the student's first name. Name one specific thing in their work that is genuinely good, then one concrete thing to push on next time. Warm and honest, no humor, no exclamation-only praise like "Great job!", and never mention AI, flags, or the grade. If the work is blank, off-task, or too thin to praise honestly, write a calm note naming what was missing and inviting them to check in with you, with no invented praise.`;
+}
+async function gradeStudent(key) {
+  const s = stu(key); if (!s) return;
+  const parts = workParts(key);
+  const pages = parts.flatMap(partPages);
+  const docs = Array.from(new Set(parts.map(p => p.docId))).map(id => RT.docs.find(d => d.id === id)).filter(Boolean);
+  const content = [{ type: 'text', text: `Student: ${s.first} ${s.last}${s.aliases.length ? ' (also goes by ' + s.aliases.join(', ') + ')' : ''}, Period ${s.period}.\nFiles: ${docs.map(d => d.name).join('; ')}` }];
+  let pick = pages;
+  if (pages.length > 20) { const step = pages.length / 20; pick = Array.from({ length: 20 }, (_, i) => pages[Math.floor(i * step)]); }
+  const maxDim = pick.length > 10 ? 1000 : 1200;
+  for (const p of pick) {
+    content.push({ type: 'text', text: `${p.doc.name}, ${p.doc.kind === 'docx' || p.doc.kind === 'pptx' ? 'image' : 'page'} ${p.n}` });
+    content.push(imgBlock(await shrink(p.url, maxDim, 0.72)));
+  }
+  const texts = docs.map(d => {
+    const own = parts.filter(p => p.docId === d.id);
+    const pageText = own.flatMap(partPages).map(p => p.text).filter(Boolean).join('\n');
+    const t = [d.text, pageText].filter(Boolean).join('\n').trim();
+    return t ? `--- ${d.name} ---\n${t}` : '';
+  }).filter(Boolean).join('\n\n');
+  if (texts) content.push({ type: 'text', text: `Typed text from the files:\n${texts.slice(0, 15000)}` });
+  if (pages.length > pick.length) content.push({ type: 'text', text: `(${pages.length} pages total; you are seeing ${pick.length} spread across them.)` });
+  content.push({ type: 'text', text: 'Grade this submission now.' });
+
+  const sig = partSig(key);
+  try {
+    const out = await callClaude({ system: gradeSystem(s.period), content, tool: gradeTool(), maxTokens: 4000 });
+    const scores = S.rubric.criteria.map((c, i) => {
+      const hit = (out.scores || []).find(x => norm(x.criterion) === norm(c)) || (out.scores || [])[i] || {};
+      const v = Math.round(Number(hit.points)); return v >= 1 && v <= nLev() ? v : null;
+    });
+    const whys = S.rubric.criteria.map((c, i) => { const hit = (out.scores || []).find(x => norm(x.criterion) === norm(c)) || (out.scores || [])[i] || {}; return hit.why || ''; });
+    S.results[key] = {
+      status: out.is_blank ? 'blank' : 'graded', scores, aiScores: scores.slice(), whys,
+      book: out.book_title || '', task: out.task_done || '', onTask: out.on_task !== false,
+      nameOnWork: out.name_on_work || '', evidence: out.reading_evidence || '',
+      flags: (out.flags || []).filter(f => FLAG_TYPES[f.type]), teacherNote: out.teacher_note || '', comment: out.student_comment || '',
+      files: docs.map(d => d.name), sig, gradedAt: new Date().toISOString(), edited: false, model: modelId()
+    };
+  } catch (e) {
+    const prev = S.results[key];
+    S.results[key] = { ...(prev || {}), status: prev && prev.scores ? prev.status : 'error', error: e.message, sig: prev ? prev.sig : '' };
+    if (e.message === 'Stopped') return;
+    throw e;
+  } finally { save(); }
+}
+
+// ---------------- pipeline ----------------
+function setProg(id, frac, msg) {
+  const el = $('#' + id); el.classList.remove('hidden');
+  $('span', el).style.width = Math.round(Math.min(1, frac) * 100) + '%';
+  $('.log', el).textContent = msg;
+}
+function setRunning(on) {
+  RT.running = on;
+  $('#btnStop').classList.toggle('hidden', !on);
+  ['#btnSplit', '#btnGradeAll'].forEach(s => $(s).disabled = on);
+}
+async function runSplit() {
+  const todo = RT.docs.filter(d => d.status === 'stack');
+  if (!todo.length) return 0;
+  let errs = 0;
+  setProg('runProg', 0, `Reading ${todo.length} unnamed file${todo.length > 1 ? 's' : ''} to find student names...`);
+  await runPool(todo, async d => {
+    try { await splitDoc(d); }
+    catch (e) { errs++; d.status = 'stack'; d.note = 'Sorting failed: ' + e.message; if (e.message.includes('API key')) RT.stop = true; }
+  }, (n, t) => { setProg('runProg', n / t, `Sorted ${n} of ${t} unnamed files${errs ? ` (${errs} failed)` : ''}`); renderFiles(); });
+  renderAll();
+  return todo.length;
+}
+async function runGrade(keys) {
+  const todo = keys || S.roster.map(s => s.key).filter(needsGrading);
+  if (!todo.length) { setProg('runProg', 1, 'Everyone with work is graded.'); return; }
+  let errs = 0, lastErr = '';
+  setProg('runProg', 0, `Grading ${todo.length} students...`);
+  await runPool(todo, async k => {
+    try { await gradeStudent(k); }
+    catch (e) { errs++; lastErr = e.message; if (/API key/.test(e.message)) RT.stop = true; }
+  }, (n, t) => { setProg('runProg', n / t, `Graded ${n} of ${t}${errs ? `. ${errs} failed: ${lastErr}` : ''}`); renderReviewCounts(); });
+  renderAll();
+}
+async function runEverything() {
+  if (!S.settings.apiKey) { toast('Add your Anthropic API key on the Set up tab first.'); switchTab('setup'); return; }
+  if (!S.roster.length) { toast('Upload a roster first so work can be matched to students.'); switchTab('setup'); return; }
+  RT.stop = false; setRunning(true);
+  try {
+    await runSplit();
+    if (!RT.stop) await runGrade();
+    if (!RT.stop) { const u = unassignedParts().length; setProg('runProg', 1, `Done.${u ? ` ${u} piece${u > 1 ? 's' : ''} of work still need a name on the Review tab.` : ''}`); }
+  } finally { setRunning(false); renderAll(); }
+}
+// ---------------- tabs + header ----------------
+function switchTab(t) {
+  S.ui.tab = t; save();
+  $$('.steps button').forEach(b => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+  $$('.tab').forEach(s => s.classList.toggle('active', s.id === 'tab-' + t));
+  if (t === 'review') renderReview();
+  if (t === 'send') renderSend();
+}
+function renderHeader() {
+  const a = S.assignment;
+  $('#hdrAssign').textContent = `${a.title || 'Untitled assignment'}, ${fmtDateMDY(a.date)}`;
+}
+function renderUsage() {
+  const u = S.usage;
+  $('#usageLine').textContent = u.calls ? `This browser has made ${u.calls} requests (${Math.round(u.input / 1000)}k tokens in, ${Math.round(u.output / 1000)}k out).` : '';
+}
+function renderAll() { renderHeader(); renderSetup(); renderUpPeriods(); renderFiles(); renderReviewCounts(); if (S.ui.tab === 'review') renderReview(); if (S.ui.tab === 'send') renderSend(); }
+
+// ---------------- setup ----------------
+function renderSetup() {
+  const a = S.assignment;
+  $('#aTitle').value = a.title; $('#aDate').value = a.date; $('#aPoints').value = a.points; $('#aMin').value = a.minPass;
+  $('#guidance').value = S.guidance; $('#offTask').value = S.offTask;
+  $('#apiKey').value = S.settings.apiKey; $('#model').value = S.settings.model; $('#customModel').value = S.settings.customModel;
+  $('#customModelWrap').classList.toggle('hidden', S.settings.model !== 'custom');
+  $('#parallel').value = S.settings.parallel;
+  renderConv(); renderRoster(); renderRubric(); renderTasks(); renderUsage();
+}
+function renderConv() {
+  const max = nCrit() * nLev(), min = nCrit();
+  const parts = [];
+  for (let t = max; t >= min; t--) {
+    const sc = Array(nCrit()).fill(1); let left = t - min;
+    for (let i = 0; i < sc.length && left > 0; i++) { const add = Math.min(nLev() - 1, left); sc[i] += add; left -= add; }
+    parts.push(`${t} = ${gradeFor(sc)}`);
+  }
+  $('#convChart').textContent = 'Rubric total to grade: ' + parts.join(', ');
+}
+function renderRoster() {
+  const ps = Array.from(new Set(S.roster.map(s => s.period))).sort((a, b) => a - b);
+  $('#rosterSummary').textContent = S.roster.length ? `${S.roster.length} students` : 'No roster yet';
+  $('#rosterChips').innerHTML = ps.map(p => {
+    const list = S.roster.filter(s => s.period === p); const noEmail = list.filter(s => !s.email).length;
+    return `<span class="chip info">Period ${p}: ${list.length}</span>${noEmail ? `<span class="chip">${noEmail} without email</span>` : ''}`;
+  }).join(' ');
+  $('#rosterList').innerHTML = S.roster.length ? `<table class="mail-table"><tr><th>Period</th><th>Name</th><th>Also goes by</th><th>ID</th><th>Email</th></tr>${
+    ps.flatMap(p => studentsIn(p)).map(s => `<tr><td>${s.period}</td><td>${esc(s.last)}, ${esc(s.first)}</td><td>${esc(s.aliases.join(', '))}</td><td>${esc(s.id)}</td><td>${esc(s.email)}</td></tr>`).join('')}</table>` : '<p class="hint" style="padding:10px">Nothing here yet.</p>';
+}
+function renderRubric() {
+  const R = S.rubric, L = R.levels;
+  let h = `<thead><tr><th class="crit">Row</th>${L.map((l, li) => `<th><input type="text" data-level="${li}" value="${esc(l)}" aria-label="Level name"><span class="hint">${pointsForLevel(li)} pts</span></th>`).join('')}<th style="width:44px"></th></tr></thead><tbody>`;
+  R.criteria.forEach((c, ci) => {
+    h += `<tr><td class="crit"><textarea data-crit="${ci}" rows="2" aria-label="Row name">${esc(c)}</textarea></td>${
+      L.map((_, li) => `<td><textarea data-desc="${ci}_${li}" rows="3" aria-label="Description">${esc(R.descriptions[ci + '_' + li] || '')}</textarea></td>`).join('')
+    }<td><button class="btn small danger" data-delcrit="${ci}" aria-label="Remove row" ${R.criteria.length < 2 ? 'disabled' : ''}>✕</button></td></tr>`;
+  });
+  $('#rubricTable').innerHTML = h + '</tbody>';
+}
+function rubricChanged() { renderConv(); save(); renderReviewCounts(); }
+function reindexDescs(fn) {
+  const out = {};
+  for (const [k, v] of Object.entries(S.rubric.descriptions)) { const [c, l] = k.split('_').map(Number); const nk = fn(c, l); if (nk) out[nk] = v; }
+  S.rubric.descriptions = out;
+}
+function renderTasks() {
+  const ps = periods();
+  if (!ps.length) { $('#taskList').innerHTML = '<p class="hint">Upload a roster and each period will show up here.</p>'; return; }
+  const opts = `<option value="">Pick a quest card...</option>` + QUEST_CARDS.map((q, i) => `<option value="${i}">#${q.n} ${esc(q.name)}</option>`).join('');
+  $('#taskList').innerHTML = ps.map(p => {
+    const ts = S.tasks[p] && S.tasks[p].length ? S.tasks[p] : [{ name: '', text: '' }];
+    return `<div class="period-task"><h4>Period ${p}</h4>${ts.map((t, i) => `
+      <div class="task-opt">
+        <div class="row"><div class="grow"><input type="text" data-tname="${p}_${i}" value="${esc(t.name)}" placeholder="Quest name" aria-label="Quest name"></div>
+          <select data-tcard="${p}_${i}" style="width:auto" aria-label="Fill from a quest card">${opts}</select>
+          ${ts.length > 1 ? `<button class="btn small danger" data-tdel="${p}_${i}">Remove</button>` : ''}</div>
+        <textarea data-ttext="${p}_${i}" rows="2" placeholder="What students were asked to do" style="margin-top:6px">${esc(t.text)}</textarea>
+      </div>`).join('')}
+      <button class="btn small" data-tadd="${p}" style="margin-top:8px">Add another option</button></div>`;
+  }).join('');
+}
+
+// ---------------- upload/files ----------------
+function renderUpPeriods() {
+  const cur = S.ui.upPeriod || 'auto';
+  $('#upPeriod').innerHTML = `<option value="auto">Detect from file name</option><option value="mixed">Mixed stack (any period)</option>` +
+    periods().map(p => `<option value="${p}">Period ${p}</option>`).join('');
+  $('#upPeriod').value = Array.from($('#upPeriod').options).some(o => o.value === String(cur)) ? cur : 'auto';
+}
+function docStatusChip(d) {
+  if (d.status === 'matched') { const s = stu(d.matchKey); return `<span class="chip ok">${esc(fullName(s))}</span>`; }
+  if (d.status === 'blank') return `<span class="chip">Blank${d.matchKey ? ': ' + esc(fullName(stu(d.matchKey))) : ''}</span>`;
+  if (d.status === 'stack') return `<span class="chip flag">Needs Claude to find names</span>`;
+  if (d.status === 'split') {
+    const ps = RT.parts.filter(p => p.docId === d.id && !p.ignored);
+    const names = Array.from(new Set(ps.filter(p => p.studentKey).map(p => fullName(stu(p.studentKey)))));
+    const un = ps.filter(p => !p.studentKey).length;
+    return `<span class="chip ok">${names.length} student${names.length === 1 ? '' : 's'}</span>${un ? ` <span class="chip flag">${un} unmatched</span>` : ''}<div class="hint" style="margin-top:4px">${esc(names.join(', '))}</div>`;
+  }
+  return `<span class="chip bad">Can't read</span>`;
+}
+function renderFiles() {
+  const docs = RT.docs;
+  $('#cntFiles').textContent = docs.length ? `(${docs.length})` : '';
+  const c = k => docs.filter(d => d.status === k).length;
+  $('#fileSummary').textContent = docs.length ? `${docs.length} files: ${c('matched')} matched by name, ${c('stack') + c('split')} for Claude to sort, ${c('blank')} blank` : '';
+  if (!docs.length) { $('#fileTable').innerHTML = '<tr><td class="hint">No files yet.</td></tr>'; return; }
+  const sorted = docs.slice().sort((a, b) => (a.period ?? 99) - (b.period ?? 99) || natCmp(a.path, b.path));
+  $('#fileTable').innerHTML = `<tr><th>File</th><th>Period</th><th>Pages</th><th>Status</th></tr>` + sorted.map(d => `<tr>
+    <td class="fname">${esc(d.name)}${d.container ? `<div class="hint">in ${esc(d.container)}</div>` : ''}${d.note ? `<div class="hint">${esc(d.note)}</div>` : ''}</td>
+    <td>${d.period ?? 'Any'}</td><td>${d.pages.length || (d.text ? 'text' : '0')}</td><td>${docStatusChip(d)}</td></tr>`).join('');
+}
+async function handleUpload(files) {
+  if (!files.length) return;
+  if (!S.roster.length) toast('Tip: upload your roster first so files can be matched to students.');
+  const choice = $('#upPeriod').value;
+  const ctx = { auto: choice === 'auto', mixed: choice === 'mixed', period: /^\d+$/.test(choice) ? Number(choice) : null, path: '', depth: 0 };
+  RT.stop = false;
+  const list = Array.from(files); let n = 0;
+  for (const f of list) {
+    const fctx = { ...ctx, period: ctx.auto ? periodFrom(f.name) : ctx.period };
+    await ingestBlob(f.name, f, fctx, msg => setProg('ingestProg', n / list.length, msg));
+    n++; setProg('ingestProg', n / list.length, `Opened ${n} of ${list.length}`);
+  }
+  autoAssign();
+  const st = RT.docs.filter(d => d.status === 'stack').length;
+  setProg('ingestProg', 1, `Done. ${RT.docs.length} files in all${st ? `, ${st} need Claude to find names` : ''}.`);
+  renderAll();
+}
+
+// ---------------- review ----------------
+function rowState(key) {
+  const r = S.results[key];
+  const work = workParts(key).length, blanks = partsFor(key).filter(p => p.kind === 'blank').length;
+  if (r && r.scores && gradeFor(r.scores) != null && r.status !== 'blank') return 'graded';
+  if (r && r.status === 'blank') return 'blank';
+  if (r && r.status === 'error') return 'error';
+  if (work) return 'ungraded';
+  if (blanks) return 'blankfile';
+  return 'none';
+}
+function needsLook(key) {
+  const r = S.results[key];
+  return (r && ((r.flags || []).length > 0 || r.status === 'error' || r.status === 'blank')) || rowState(key) === 'ungraded';
+}
+function renderReviewCounts() {
+  const graded = S.roster.filter(s => rowState(s.key) === 'graded').length;
+  $('#cntReview').textContent = S.roster.length ? `(${graded}/${S.roster.length})` : '';
+}
+function renderReview() {
+  renderReviewCounts(); renderTray();
+  const ps = periods();
+  if (!ps.length) { $('#periodPills').innerHTML = ''; $('#reviewTable').innerHTML = '<tr><td class="hint" style="padding:16px">Upload a roster on the Set up tab to see students here.</td></tr>'; $('#reviewSummary').innerHTML = ''; return; }
+  if (!ps.includes(S.ui.period)) S.ui.period = ps[0];
+  $('#periodPills').innerHTML = ps.map(p => {
+    const look = studentsIn(p).filter(s => needsLook(s.key)).length;
+    return `<button data-p="${p}" aria-pressed="${p === S.ui.period}">Period ${p}${look ? `<span class="chip flag">${look}</span>` : ''}</button>`;
+  }).join('');
+  $$('#filterPills button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.f === S.ui.filter)));
+  const all = studentsIn(S.ui.period);
+  const cnt = k => all.filter(s => rowState(s.key) === k).length;
+  $('#reviewSummary').innerHTML = `<span class="chip ok">${cnt('graded')} graded</span>` +
+    (cnt('ungraded') ? `<span class="chip info">${cnt('ungraded')} not graded yet</span>` : '') +
+    (cnt('error') ? `<span class="chip bad">${cnt('error')} errors</span>` : '') +
+    `<span class="chip">${cnt('none') + cnt('blankfile') + cnt('blank')} no work</span>`;
+  let list = all;
+  if (S.ui.filter === 'look') list = all.filter(s => needsLook(s.key));
+  if (S.ui.filter === 'none') list = all.filter(s => ['none', 'blankfile', 'blank'].includes(rowState(s.key)));
+  const C = S.rubric.criteria;
+  let h = `<thead><tr><th>Student</th>${C.map(c => `<th>${esc(c)}</th>`).join('')}<th>Grade</th><th>Notes</th><th></th></tr></thead><tbody>`;
+  for (const s of list) h += reviewRow(s);
+  if (!list.length) h += `<tr><td colspan="${C.length + 4}" class="hint" style="padding:16px">Nobody here.</td></tr>`;
+  $('#reviewTable').innerHTML = h + '</tbody>';
+}
+function scoreSelect(key, ci, val) {
+  const opts = ['<option value="">–</option>'].concat(S.rubric.levels.map((l, li) => `<option value="${pointsForLevel(li)}" ${Number(val) === pointsForLevel(li) ? 'selected' : ''}>${pointsForLevel(li)}</option>`));
+  const cls = val ? 'l' + Math.min(3, levelForPoints(Number(val))) : '';
+  return `<select class="score-sel ${cls}" data-score="${ci}" data-key="${esc(key)}" aria-label="${esc(S.rubric.criteria[ci])}">${opts.join('')}</select>`;
+}
+function reviewRow(s) {
+  const r = S.results[s.key] || {};
+  const st = rowState(s.key);
+  const g = gradeFor(r.scores);
+  const sub = r.book ? esc(r.book) : st === 'ungraded' ? 'Work found, not graded yet' : st === 'none' ? 'No work found' : st === 'blankfile' ? 'Only a blank doc' : st === 'blank' ? 'Blank or name only' : st === 'error' ? 'Grading failed' : '';
+  const chips = [];
+  if (st === 'error') chips.push(`<span class="chip bad" title="${esc(r.error)}">Error</span>`);
+  if (r.edited) chips.push('<span class="chip info">Edited</span>');
+  (r.flags || []).forEach(f => chips.push(`<span class="chip flag" title="${esc(f.note)}">${esc(FLAG_TYPES[f.type] || f.type)}</span>`));
+  const open = RT.open === s.key;
+  let h = `<tr class="main" data-row="${esc(s.key)}"><td class="who">${esc(s.first)} ${esc(s.last)}<small>${sub}</small></td>
+    ${S.rubric.criteria.map((_, ci) => `<td>${scoreSelect(s.key, ci, r.scores ? r.scores[ci] : null)}</td>`).join('')}
+    <td class="grade">${g != null ? g : ''}</td><td>${chips.join(' ')}</td>
+    <td><button class="btn small" data-open="${esc(s.key)}" aria-expanded="${open}">${open ? 'Close' : 'Open'}</button></td></tr>`;
+  if (open) h += `<tr class="detail"><td colspan="${S.rubric.criteria.length + 4}">${detailHtml(s)}</td></tr>`;
+  return h;
+}
+function detailHtml(s) {
+  const r = S.results[s.key] || {};
+  const parts = partsFor(s.key);
+  const pages = parts.filter(p => p.kind === 'work').flatMap(partPages);
+  const docs = Array.from(new Set(parts.map(p => p.docId))).map(id => RT.docs.find(d => d.id === id)).filter(Boolean);
+  const texts = docs.filter(d => d.text && d.text.trim()).map(d => `<div class="doctext"><b>${esc(d.name)}</b>\n${esc(d.text.slice(0, 6000))}</div>`).join('');
+  const others = S.roster.slice().sort((a, b) => a.period - b.period || natCmp(a.last, b.last)).filter(x => x.key !== s.key)
+    .map(x => `<option value="${esc(x.key)}">P${x.period} ${esc(x.last)}, ${esc(x.first)}</option>`).join('');
+  const filesLine = docs.length ? docs.map(d => esc(d.name)).join('; ') : (r.files && r.files.length ? esc(r.files.join('; ')) + ' <span class="hint">(re-upload to view)</span>' : 'None');
+  return `<div class="detail-grid">
+    <div>
+      <p class="hint" style="margin-bottom:6px">Files: ${filesLine}</p>
+      ${pages.length ? `<div class="thumbs">${pages.map((p, i) => `<img src="${p.url}" alt="${esc(p.doc.name)} page ${p.n}" data-lb="${esc(s.key)}" data-i="${i}">`).join('')}</div>` : ''}
+      ${texts}
+      <div class="row" style="margin-top:10px">
+        <button class="btn small" data-regrade="${esc(s.key)}" ${workParts(s.key).length ? '' : 'disabled'}>Grade again</button>
+        ${parts.length ? `<select data-move="${esc(s.key)}" style="width:auto"><option value="">Move this work to...</option>${others}</select>` : ''}
+        <button class="btn small danger" data-clear="${esc(s.key)}">Clear grade</button>
+      </div>
+    </div>
+    <div>
+      <dl class="kv">
+        <dt>Book</dt><dd><input type="text" data-field="book" data-key="${esc(s.key)}" value="${esc(r.book || '')}"></dd>
+        <dt>Quest done</dt><dd>${esc(r.task || '')}${r.onTask === false ? ' <span class="chip flag">not the assigned quest</span>' : ''}</dd>
+        <dt>Shows reading</dt><dd>${esc(r.evidence || '')}</dd>
+        ${r.nameOnWork ? `<dt>Name on work</dt><dd>${esc(r.nameOnWork)}</dd>` : ''}
+      </dl>
+      ${(r.whys || []).some(Boolean) ? `<ul class="whys">${S.rubric.criteria.map((c, i) => r.whys[i] ? `<li><b>${esc(c)}:</b> ${esc(r.whys[i])}${r.aiScores && r.scores && r.aiScores[i] !== r.scores[i] ? ` <span class="hint">(Claude gave ${r.aiScores[i]})</span>` : ''}</li>` : '').join('')}</ul>` : ''}
+      ${(r.flags || []).length ? `<div style="margin-top:8px">${r.flags.map((f, i) => `<div class="row" style="margin-top:4px"><span class="chip flag">${esc(FLAG_TYPES[f.type] || f.type)}</span><span style="flex:1">${esc(f.note)}</span><button class="linkbtn" data-unflag="${esc(s.key)}" data-i="${i}">Dismiss</button></div>`).join('')}</div>` : ''}
+      <label class="f">Note for you</label>
+      <textarea data-field="teacherNote" data-key="${esc(s.key)}" rows="3">${esc(r.teacherNote || '')}</textarea>
+      <label class="f">Comment to ${esc(s.first)} (goes on the PDF)</label>
+      <textarea data-field="comment" data-key="${esc(s.key)}" rows="3">${esc(r.comment || '')}</textarea>
+      ${r.error ? `<p class="hint" style="color:var(--red);margin-top:6px">Last error: ${esc(r.error)}</p>` : ''}
+    </div></div>`;
+}
+function renderTray() {
+  const un = unassignedParts();
+  if (!un.length) { $('#tray').innerHTML = ''; return; }
+  const opts = S.roster.slice().sort((a, b) => a.period - b.period || natCmp(a.last, b.last))
+    .map(x => `<option value="${esc(x.key)}">P${x.period} ${esc(x.last)}, ${esc(x.first)}</option>`).join('');
+  $('#tray').innerHTML = `<details class="tray" ${un.length <= 12 ? 'open' : ''}><summary><h3>Work without a name (${un.length})</h3> <span class="hint">Pick the student and it gets graded. Ignore anything that isn't this assignment.</span></summary>
+    <div class="tray-grid">${un.map(p => {
+      const d = RT.docs.find(x => x.id === p.docId); const pg = partPages(p);
+      return `<div class="tray-item"><div><b>${esc(d ? d.name : '')}</b>${p.pages ? ` <span class="hint">page${p.pages.length > 1 ? 's' : ''} ${p.pages.map(i => i + 1).join(', ')}</span>` : ''}</div>
+        <div class="thumbs">${pg.slice(0, 4).map((x, i) => `<img src="${x.url}" alt="page ${x.n}" data-lbpart="${p.id}" data-i="${i}">`).join('')}</div>
+        ${p.aiName ? `<p>Name Claude saw: <b>${esc(p.aiName)}</b></p>` : ''}${p.kind === 'other' ? '<p><span class="chip">Looks like a different assignment</span></p>' : ''}
+        ${p.note ? `<p class="hint">${esc(p.note)}</p>` : ''}
+        <div class="row"><select data-assign="${p.id}" style="flex:1"><option value="">Whose work is this?</option>${opts}</select>
+        <button class="btn small" data-ignore="${p.id}">Ignore</button></div></div>`;
+    }).join('')}</div></details>`;
+}
+function openLightbox(list, i) {
+  RT.lb = { list, i };
+  showLb(); $('#lightbox').classList.add('open'); $('#lbClose').focus();
+}
+function showLb() {
+  const { list, i } = RT.lb; const p = list[i]; if (!p) return;
+  $('#lbImg').src = p.url; $('#lbImg').alt = `${p.doc.name} page ${p.n}`;
+  $('#lbCap').textContent = `${p.doc.name}, page ${p.n} (${i + 1} of ${list.length})`;
+}
+async function assignPart(partId, key) {
+  const p = RT.parts.find(x => x.id === partId); if (!p) return;
+  p.studentKey = key; p.kind = p.kind === 'other' ? 'work' : p.kind; p.source = 'you';
+  renderAll();
+  if (S.settings.apiKey && workParts(key).length) {
+    toast(`Grading ${fullName(stu(key))}...`);
+    try { RT.stop = false; await gradeStudent(key); toast(`Graded ${fullName(stu(key))}.`); } catch (e) { toast('Grading failed: ' + e.message); }
+    renderAll();
+  }
+}
+// ---------------- exports ----------------
+function gradedIn(p) { return studentsIn(p).filter(s => rowState(s.key) === 'graded'); }
+function eschoolCsv(p) {
+  const a = S.assignment;
+  const rows = [['Student ID', 'Last Name', 'First Name', 'Email Address', `${a.title} ${fmtDateMDY(a.date)}`],
+    ['', 'Date', '', '', a.date], ['', 'Points', '', '', String(a.points)]];
+  for (const s of studentsIn(p)) {
+    const r = S.results[s.key]; const g = rowState(s.key) === 'graded' ? gradeFor(r.scores) : null;
+    rows.push([s.id, s.last, s.first, s.email, g == null ? '' : String(g)]);
+  }
+  return toCsv(rows);
+}
+function csvName(p) { return `Period_${p}_Grades_${S.assignment.date}.csv`; }
+function safeFile(s) { return String(s).replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim(); }
+function pdfName(s) { return safeFile(`${s.last}, ${s.first} - ${S.assignment.title}.pdf`); }
+function pdfSafe(t) {
+  return String(t ?? '').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...').replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\u00FF]/g, '');
+}
+const LV_RGB = [[205, 238, 214], [255, 236, 170], [250, 210, 210], [226, 219, 247], [214, 230, 247]];
+function buildPdf(s) {
+  const r = S.results[s.key]; const { jsPDF } = window.jspdf;
+  const L = S.rubric.levels, C = S.rubric.criteria;
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: L.length >= 4 ? 'landscape' : 'portrait' });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 40;
+  let y = M + 6;
+  doc.setTextColor(29, 36, 51);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(17); doc.text(pdfSafe(S.assignment.title), M, y);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.text(fmtDateMDY(S.assignment.date), W - M, y, { align: 'right' });
+  y += 22;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(12.5); doc.text(pdfSafe(`${s.first} ${s.last}`), M, y);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5); doc.text(`Period ${s.period}`, W - M, y, { align: 'right' });
+  if ($('#pdfBook').checked && r.book) { y += 16; doc.setFontSize(10.5); doc.text(pdfSafe('Book: ' + r.book), M, y); }
+  y += 18;
+  const cw = 108, sw = 62, lw = (W - 2 * M - cw - sw) / L.length;
+  const line = (x1, y1, x2, y2) => doc.line(x1, y1, x2, y2);
+  doc.setDrawColor(150, 158, 170); doc.setLineWidth(0.6);
+  // header
+  const hh = 30;
+  doc.setFillColor(238, 241, 245); doc.rect(M, y, W - 2 * M, hh, 'F');
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
+  doc.text('Row', M + 6, y + 18);
+  L.forEach((l, li) => { const t = doc.splitTextToSize(pdfSafe(`${l} (${pointsForLevel(li)})`), lw - 10); doc.text(t, M + cw + li * lw + 6, t.length > 1 ? y + 13 : y + 18); });
+  doc.text('Score', M + cw + L.length * lw + 6, y + 18);
+  doc.rect(M, y, W - 2 * M, hh);
+  y += hh;
+  C.forEach((c, ci) => {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    const descs = L.map((_, li) => doc.splitTextToSize(pdfSafe(S.rubric.descriptions[ci + '_' + li] || ''), lw - 12));
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+    const cl = doc.splitTextToSize(pdfSafe(c), cw - 12);
+    const rh = Math.max(44, ...descs.map(d => d.length * 11 + 14), cl.length * 12 + 14);
+    if (y + rh > H - 140) { doc.addPage(); y = M; }
+    const pts = r.scores[ci]; const li = levelForPoints(pts);
+    const x0 = M + cw + li * lw;
+    const col = LV_RGB[Math.min(li, LV_RGB.length - 1)];
+    doc.setFillColor(...col); doc.rect(x0, y, lw, rh, 'F'); doc.rect(M + cw + L.length * lw, y, sw, rh, 'F');
+    doc.setTextColor(29, 36, 51);
+    doc.text(cl, M + 6, y + 15);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+    descs.forEach((d, i) => doc.text(d, M + cw + i * lw + 6, y + 14));
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+    doc.text(`${pts} / ${L.length}`, M + cw + L.length * lw + sw / 2, y + rh / 2 + 4, { align: 'center' });
+    doc.setLineWidth(0.6); doc.rect(M, y, W - 2 * M, rh);
+    line(M + cw, y, M + cw, y + rh);
+    for (let i = 1; i <= L.length; i++) line(M + cw + i * lw, y, M + cw + i * lw, y + rh);
+    doc.setLineWidth(1.6); doc.setDrawColor(29, 36, 51); doc.rect(x0 + 1, y + 1, lw - 2, rh - 2);
+    doc.setDrawColor(150, 158, 170); doc.setLineWidth(0.6);
+    y += rh;
+  });
+  // totals
+  const total = totalFor(r.scores), max = C.length * L.length, g = gradeFor(r.scores);
+  const tw = sw + 150;
+  const rowT = (label, val) => {
+    doc.setFillColor(238, 241, 245); doc.rect(W - M - tw, y, tw, 24, 'F'); doc.rect(W - M - tw, y, tw, 24);
+    line(W - M - sw, y, W - M - sw, y + 24);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.text(label, W - M - sw - 8, y + 16, { align: 'right' });
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); doc.text(val, W - M - sw / 2, y + 16, { align: 'center' });
+    y += 24;
+  };
+  rowT('Rubric total', `${total} / ${max}`);
+  rowT('Grade', Number(S.assignment.points) === 100 ? `${g}%` : `${g} / ${S.assignment.points}`);
+  if ($('#pdfComments').checked && r.comment && r.comment.trim()) {
+    y += 22;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5);
+    const cl = doc.splitTextToSize(pdfSafe(r.comment.trim()), W - 2 * M - 24);
+    const ch = cl.length * 14 + 34;
+    if (y + ch > H - M) { doc.addPage(); y = M; }
+    doc.setFillColor(250, 250, 247); doc.rect(M, y, W - 2 * M, ch, 'F'); doc.rect(M, y, W - 2 * M, ch);
+    doc.setFont('helvetica', 'bold'); doc.text('Comment', M + 12, y + 18);
+    doc.setFont('helvetica', 'normal'); doc.text(cl, M + 12, y + 34);
+  }
+  doc.setProperties({ title: `${S.assignment.title}: ${s.first} ${s.last}`, subject: `Student ID ${s.id || ''}`, author: S.mail.fromName || 'Mr. Axelson' });
+  return doc;
+}
+async function downloadPdfs(p) {
+  const ps = p === 'all' ? periods() : [p];
+  const zip = new JSZip(); let n = 0;
+  for (const per of ps) {
+    for (const s of gradedIn(per)) {
+      const blob = buildPdf(s).output('blob');
+      (ps.length > 1 ? zip.folder(`Period ${per}`) : zip).file(pdfName(s), blob); n++;
+    }
+  }
+  if (!n) { toast('Nobody is graded yet.'); return; }
+  download(safeFile(`${S.assignment.title} rubrics ${p === 'all' ? 'all periods' : 'Period ' + p}.zip`), await zip.generateAsync({ type: 'blob' }), 'application/zip');
+}
+async function downloadAllCsv() {
+  const zip = new JSZip();
+  periods().forEach(p => zip.file(csvName(p), eschoolCsv(p)));
+  download(safeFile(`${S.assignment.title} eSchool CSVs.zip`), await zip.generateAsync({ type: 'blob' }), 'application/zip');
+}
+function notesCsv() {
+  const C = S.rubric.criteria;
+  const rows = [['Period', 'Last Name', 'First Name', 'Student ID', 'Status', 'Book', 'Quest done', 'On assigned quest', ...C, 'Total', 'Grade', 'Flags', 'Note for teacher', 'Comment to student', 'Files']];
+  for (const p of periods()) for (const s of studentsIn(p)) {
+    const r = S.results[s.key] || {}; const st = rowState(s.key);
+    rows.push([p, s.last, s.first, s.id, { graded: 'Graded', ungraded: 'Not graded', none: 'No work', blankfile: 'Blank doc', blank: 'Blank', error: 'Error' }[st],
+      r.book || '', r.task || '', r.onTask === false ? 'No' : r.task ? 'Yes' : '', ...C.map((_, i) => r.scores ? (r.scores[i] ?? '') : ''),
+      r.scores && st === 'graded' ? totalFor(r.scores) : '', st === 'graded' ? gradeFor(r.scores) : '',
+      (r.flags || []).map(f => `${FLAG_TYPES[f.type] || f.type}: ${f.note}`).join(' | '), r.teacherNote || '', r.comment || '', (r.files || []).join('; ')]);
+  }
+  download(safeFile(`${S.assignment.title} teacher notes.csv`), toCsv(rows));
+}
+function rubricJson() {
+  const R = S.rubric;
+  return JSON.stringify({ title: S.assignment.title, numCriteria: R.criteria.length, numLevels: R.levels.length, criteria: R.criteria, levels: R.levels,
+    descriptions: R.descriptions, minPassGrade: Number(S.assignment.minPass), assignmentDate: S.assignment.date, maxPoints: Number(S.assignment.points) }, null, 2);
+}
+function renderSend() {
+  const ps = periods();
+  $('#csvButtons').innerHTML = ps.length ? ps.map(p => `<button class="btn" data-csv="${p}">Period ${p} <span class="hint">(${gradedIn(p).length}/${studentsIn(p).length})</span></button>`).join('') +
+    `<button class="btn primary" data-csv="all">All periods (.zip)</button>` : '<p class="hint">Add a roster first.</p>';
+  $('#pdfButtons').innerHTML = ps.length ? ps.map(p => `<button class="btn" data-pdf="${p}">Period ${p}</button>`).join('') + `<button class="btn primary" data-pdf="all">All periods (.zip)</button>` : '';
+  renderMail();
+}
+
+// ---------------- email ----------------
+const MAILER_SCRIPT = `// Rubric Mailer: paste into a new Apps Script project, then
+// Deploy > New deployment > Web app (Execute as: Me, Who has access: Anyone).
+const SECRET = 'CHANGE-ME-to-a-long-random-phrase';
+
+function doPost(e) {
+  try {
+    const req = JSON.parse(e.postData.contents);
+    if (req.key !== SECRET) {
+      return reply_({ ok: false, error: 'Secret key does not match. Make the key in the tool match SECRET in the script, then deploy a new version.' });
+    }
+    const me = Session.getEffectiveUser().getEmail();
+    if (req.action === 'ping') {
+      return reply_({ ok: true, me: me, remaining: MailApp.getRemainingDailyQuota() });
+    }
+    const to = req.action === 'test' ? me : String(req.to || '').trim();
+    if (!to) return reply_({ ok: false, error: 'No email address for this student.' });
+    if (!req.pdfBase64) return reply_({ ok: false, error: 'No PDF was attached.' });
+    const pdf = Utilities.newBlob(Utilities.base64Decode(req.pdfBase64), 'application/pdf', req.filename || 'rubric.pdf');
+    const options = { attachments: [pdf] };
+    if (req.fromName) options.name = req.fromName;
+    GmailApp.sendEmail(to, req.subject || 'Your rubric', req.body || '', options);
+    return reply_({ ok: true, to: to, remaining: MailApp.getRemainingDailyQuota() });
+  } catch (err) {
+    return reply_({ ok: false, error: String((err && err.message) || err) });
+  }
+}
+
+function doGet() {
+  return reply_({ ok: true, message: 'Rubric Mailer is running.' });
+}
+
+function reply_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}`;
+const MAIL = { status: {}, sending: false, checked: null };
+function readMailCode() {
+  const raw = $('#mailCode').value.trim();
+  if (/^RM1:/.test(raw)) {
+    try { const o = JSON.parse(atob(raw.slice(4))); S.mail.url = o.u || ''; S.mail.key = o.k || ''; $('#mailCode').value = S.mail.url; $('#mailKey').value = S.mail.key; save(); return true; }
+    catch (e) { toast("That connection code didn't read correctly. Copy it again from the rubric grader."); return false; }
+  }
+  S.mail.url = raw; S.mail.key = $('#mailKey').value.trim(); save(); return true;
+}
+async function mailPost(payload) {
+  if (!S.mail.url || !/\/exec(\?|$)/.test(S.mail.url)) throw new Error('Paste the connection code or the web app URL that ends in /exec.');
+  const res = await fetch(S.mail.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ key: S.mail.key, ...payload }) });
+  const data = await res.json().catch(() => null);
+  if (!data) throw new Error(`The mailer sent back something unexpected (HTTP ${res.status}). Check that the deployment allows "Anyone".`);
+  if (!data.ok) throw new Error(data.error || 'The mailer reported a problem.');
+  return data;
+}
+function fillTpl(t, s) { return String(t || '').replace(/\{first\}/g, s.first).replace(/\{last\}/g, s.last).replace(/\{assignment\}/g, S.assignment.title); }
+function mailCandidates() {
+  const p = $('#mailPeriod').value;
+  const ps = p === 'all' || !p ? periods() : [Number(p)];
+  return ps.flatMap(per => gradedIn(per));
+}
+function sentMap() { const id = assignmentId(); return (S.sent[id] = S.sent[id] || {}); }
+function renderMail() {
+  $('#mailCode').value = S.mail.url; $('#mailKey').value = S.mail.key; $('#mailFrom').value = S.mail.fromName;
+  $('#mailSubject').value = S.mail.subject; $('#mailBody').value = S.mail.body; $('#mailerScript').textContent = MAILER_SCRIPT;
+  const cur = $('#mailPeriod').value || 'all';
+  $('#mailPeriod').innerHTML = `<option value="all">All periods</option>` + periods().map(p => `<option value="${p}">Period ${p}</option>`).join('');
+  $('#mailPeriod').value = Array.from($('#mailPeriod').options).some(o => o.value === cur) ? cur : 'all';
+  renderMailTable();
+}
+function renderMailTable() {
+  const list = mailCandidates(); const sent = sentMap();
+  if (!MAIL.checked) MAIL.checked = new Set();
+  list.forEach(s => { if (!(s.key in MAIL.status) && s.email && !sent[s.key] && !MAIL.touched) MAIL.checked.add(s.key); });
+  $('#mailTable').innerHTML = `<tr><th></th><th>Student</th><th>Email</th><th>Grade</th><th>Status</th></tr>` + (list.length ? list.map(s => {
+    const st = MAIL.status[s.key];
+    return `<tr><td><input type="checkbox" data-mail="${esc(s.key)}" ${MAIL.checked.has(s.key) ? 'checked' : ''} ${s.email ? '' : 'disabled'} aria-label="Send to ${esc(s.first)}"></td>
+      <td>P${s.period} ${esc(s.last)}, ${esc(s.first)}</td><td>${s.email ? esc(s.email) : '<span class="hint">No email on the roster</span>'}</td>
+      <td>${gradeFor(S.results[s.key].scores)}</td>
+      <td>${st ? (st.ok ? `<span class="chip ok">${esc(st.msg)}</span>` : st.busy ? '<span class="chip info">Sending...</span>' : `<span class="chip bad">${esc(st.msg)}</span>`) : sent[s.key] ? `<span class="chip ok">Sent ${new Date(sent[s.key]).toLocaleDateString()}</span>` : ''}</td></tr>`;
+  }).join('') : `<tr><td colspan="5" class="hint">No graded students yet.</td></tr>`);
+  $('#mailCount').textContent = `${list.filter(s => MAIL.checked.has(s.key)).length} checked`;
+}
+async function sendMail(test) {
+  if (MAIL.sending) return;
+  if (!readMailCode()) return;
+  saveMailFields();
+  const list = mailCandidates().filter(s => MAIL.checked.has(s.key) && s.email);
+  if (!list.length) { toast(test ? 'Check at least one student to use as the test.' : 'Nobody is checked.'); return; }
+  if (!test && !confirm(`Email rubrics to ${list.length} student${list.length > 1 ? 's' : ''}?`)) return;
+  MAIL.sending = true; $('#btnMailSend').disabled = true; $('#btnMailTest').disabled = true;
+  const sent = sentMap();
+  const one = async s => {
+    MAIL.status[s.key] = { busy: true }; renderMailTable();
+    const pdf = buildPdf(s).output('datauristring').split(',')[1];
+    const payload = { action: test ? 'test' : 'send', to: s.email, fromName: S.mail.fromName, filename: pdfName(s), pdfBase64: pdf,
+      subject: (test ? '[TEST] ' : '') + fillTpl(S.mail.subject, s), body: fillTpl(S.mail.body, s) };
+    for (let a = 0; a < 3; a++) {
+      try {
+        const r = await mailPost(payload);
+        MAIL.status[s.key] = { ok: true, msg: test ? `Test sent to ${r.to}` : 'Sent' };
+        if (!test) { sent[s.key] = new Date().toISOString(); MAIL.checked.delete(s.key); save(); }
+        $('#mailStatus').textContent = r.remaining != null ? `${r.remaining} emails left today` : '';
+        return;
+      } catch (e) {
+        if (a === 2 || /secret|exec|address|Anyone/i.test(e.message)) { MAIL.status[s.key] = { ok: false, msg: e.message }; return; }
+        await sleep(1500 * (a + 1));
+      }
+    }
+  };
+  try {
+    if (test) await one(list[0]);
+    else { let i = 0; await Promise.all([0, 1, 2].map(async () => { while (i < list.length) { await one(list[i++]); renderMailTable(); } })); }
+  } finally {
+    MAIL.sending = false; $('#btnMailSend').disabled = false; $('#btnMailTest').disabled = false; renderMailTable();
+    if (!test) { const bad = list.filter(s => MAIL.status[s.key] && !MAIL.status[s.key].ok).length; toast(bad ? `${list.length - bad} sent, ${bad} failed. Failed ones stay checked.` : `Sent ${list.length} rubrics.`); }
+  }
+}
+function saveMailFields() {
+  S.mail.fromName = $('#mailFrom').value; S.mail.subject = $('#mailSubject').value; S.mail.body = $('#mailBody').value; save();
+}
+
+// ---------------- events ----------------
+function wire() {
+  $$('.steps button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  // assignment
+  const bindA = (id, k, num) => $(id).addEventListener('input', e => { S.assignment[k] = num ? Number(e.target.value) : e.target.value; save(); renderHeader(); renderConv(); });
+  bindA('#aTitle', 'title'); bindA('#aDate', 'date'); bindA('#aPoints', 'points', true); bindA('#aMin', 'minPass', true);
+  $('#btnNewAssign').addEventListener('click', () => {
+    if (!confirm('Start a new assignment? This clears the grades, notes, and uploaded files for the current one. Your roster, rubric, quests, and settings stay. Back up first if you want to keep these grades.')) return;
+    S.results = {}; RT.docs = []; RT.parts = []; RT.hashes.clear(); RT.open = null;
+    const m = String(S.assignment.title).match(/^(.*?)(\d+)\s*$/);
+    if (m) S.assignment.title = m[1] + (Number(m[2]) + 1);
+    S.assignment.date = new Date().toISOString().slice(0, 10);
+    save(); renderAll(); toast('Ready for a new assignment.');
+  });
+  // roster
+  $('#rosterInput').addEventListener('change', e => { importRosterFiles(Array.from(e.target.files)); e.target.value = ''; });
+  $('#btnClearRoster').addEventListener('click', () => { if (confirm('Remove every student from the roster?')) { S.roster = []; save(); renderAll(); } });
+  // rubric
+  $('#rubricTable').addEventListener('input', e => {
+    const t = e.target;
+    if (t.dataset.level != null) S.rubric.levels[Number(t.dataset.level)] = t.value;
+    if (t.dataset.crit != null) S.rubric.criteria[Number(t.dataset.crit)] = t.value;
+    if (t.dataset.desc != null) S.rubric.descriptions[t.dataset.desc] = t.value;
+    rubricChanged();
+  });
+  const shapeOk = () => !Object.keys(S.results).length || confirm('Changing the rubric shape means existing grades need to be graded again. Continue?');
+  $('#rubricTable').addEventListener('click', e => {
+    const b = e.target.closest('[data-delcrit]'); if (!b || !shapeOk()) return;
+    const ci = Number(b.dataset.delcrit);
+    S.rubric.criteria.splice(ci, 1); reindexDescs((c, l) => c === ci ? null : `${c > ci ? c - 1 : c}_${l}`);
+    renderRubric(); rubricChanged();
+  });
+  $('#btnAddCrit').addEventListener('click', () => { if (!shapeOk()) return; S.rubric.criteria.push('New row'); renderRubric(); rubricChanged(); });
+  $('#btnAddLevel').addEventListener('click', () => { if (!shapeOk()) return; S.rubric.levels.push('New level'); renderRubric(); rubricChanged(); });
+  $('#btnRemoveLevel').addEventListener('click', () => {
+    if (S.rubric.levels.length < 3 || !shapeOk()) return;
+    const last = S.rubric.levels.length - 1; S.rubric.levels.pop(); reindexDescs((c, l) => l === last ? null : `${c}_${l}`);
+    renderRubric(); rubricChanged();
+  });
+  $('#rubricInput').addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const j = JSON.parse(await f.text());
+      const crit = (j.criteria || []).map(c => typeof c === 'string' ? c : (c.name || c.title || ''));
+      const lev = (j.levels || []).map(l => typeof l === 'string' ? l : (l.name || l.title || ''));
+      if (!crit.length || !lev.length) throw new Error('No criteria or levels found');
+      S.rubric = { criteria: crit, levels: lev, descriptions: j.descriptions || {} };
+      if (j.minPassGrade != null) S.assignment.minPass = Number(j.minPassGrade);
+      save(); renderAll(); toast('Rubric loaded.');
+    } catch (er) { toast("Couldn't read that rubric: " + er.message); }
+  });
+  // tasks
+  $('#taskList').addEventListener('input', e => {
+    const t = e.target; const id = t.dataset.tname || t.dataset.ttext; if (!id) return;
+    const [p, i] = id.split('_').map(Number);
+    S.tasks[p] = S.tasks[p] && S.tasks[p].length ? S.tasks[p] : [{ name: '', text: '' }];
+    S.tasks[p][i][t.dataset.tname ? 'name' : 'text'] = t.value; save();
+  });
+  $('#taskList').addEventListener('change', e => {
+    const t = e.target; if (!t.dataset.tcard || t.value === '') return;
+    const [p, i] = t.dataset.tcard.split('_').map(Number); const q = QUEST_CARDS[Number(t.value)];
+    S.tasks[p] = S.tasks[p] && S.tasks[p].length ? S.tasks[p] : [{ name: '', text: '' }];
+    S.tasks[p][i] = { name: `#${q.n} ${q.name}`, text: q.text }; save(); renderTasks();
+  });
+  $('#taskList').addEventListener('click', e => {
+    const add = e.target.closest('[data-tadd]'), del = e.target.closest('[data-tdel]');
+    if (add) { const p = Number(add.dataset.tadd); S.tasks[p] = S.tasks[p] && S.tasks[p].length ? S.tasks[p] : [{ name: '', text: '' }]; S.tasks[p].push({ name: '', text: '' }); save(); renderTasks(); }
+    if (del) { const [p, i] = del.dataset.tdel.split('_').map(Number); S.tasks[p].splice(i, 1); save(); renderTasks(); }
+  });
+  // guidance + claude
+  $('#guidance').addEventListener('input', e => { S.guidance = e.target.value; save(); });
+  $('#offTask').addEventListener('change', e => { S.offTask = e.target.value; save(); });
+  $('#apiKey').addEventListener('input', e => { S.settings.apiKey = e.target.value.trim(); save(); });
+  $('#model').addEventListener('change', e => { S.settings.model = e.target.value; $('#customModelWrap').classList.toggle('hidden', e.target.value !== 'custom'); save(); });
+  $('#customModel').addEventListener('input', e => { S.settings.customModel = e.target.value.trim(); save(); });
+  $('#parallel').addEventListener('input', e => { S.settings.parallel = Math.max(1, Math.min(8, Number(e.target.value) || 3)); save(); });
+  $('#btnTestKey').addEventListener('click', async () => {
+    $('#keyStatus').innerHTML = '<span class="chip info">Checking...</span>';
+    try {
+      RT.stop = false;
+      await callClaude({ system: 'Reply using the tool.', content: [{ type: 'text', text: 'Say ok.' }], maxTokens: 1000,
+        tool: { name: 'ok', description: 'Confirm.', input_schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] } } });
+      $('#keyStatus').innerHTML = `<span class="chip ok">Connected to ${esc(modelId())}</span>`;
+    } catch (e) { $('#keyStatus').innerHTML = `<span class="chip bad">${esc(e.message)}</span>`; }
+  });
+  // upload
+  const drop = $('#drop'), fi = $('#fileInput');
+  drop.addEventListener('click', () => fi.click());
+  drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fi.click(); } });
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); handleUpload(Array.from(e.dataTransfer.files)); });
+  fi.addEventListener('change', e => { handleUpload(Array.from(e.target.files)); e.target.value = ''; });
+  $('#upPeriod').addEventListener('change', e => { S.ui.upPeriod = e.target.value; save(); });
+  $('#btnGradeAll').addEventListener('click', runEverything);
+  $('#btnSplit').addEventListener('click', async () => {
+    if (!S.settings.apiKey) { toast('Add your Anthropic API key on the Set up tab first.'); return; }
+    RT.stop = false; setRunning(true);
+    try { const n = await runSplit(); if (!n) setProg('runProg', 1, 'No unnamed files to sort.'); else setProg('runProg', 1, 'Sorted. Check the Files list, then grade.'); } finally { setRunning(false); }
+  });
+  $('#btnStop').addEventListener('click', () => { RT.stop = true; toast('Stopping after the current requests finish...'); });
+  $('#btnClearFiles').addEventListener('click', () => { if (confirm('Remove all uploaded files? Grades already made stay.')) { RT.docs = []; RT.parts = []; RT.hashes.clear(); renderAll(); } });
+  // review
+  $('#periodPills').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (b) { S.ui.period = Number(b.dataset.p); RT.open = null; save(); renderReview(); } });
+  $('#filterPills').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { S.ui.filter = b.dataset.f; save(); renderReview(); } });
+  $('#reviewTable').addEventListener('change', async e => {
+    const t = e.target;
+    if (t.dataset.score != null) {
+      const key = t.dataset.key; const r = S.results[key] = S.results[key] || { status: 'manual', flags: [] };
+      r.scores = r.scores && r.scores.length === nCrit() ? r.scores : Array(nCrit()).fill(null);
+      r.scores[Number(t.dataset.score)] = t.value === '' ? null : Number(t.value);
+      r.edited = true; if (r.status === 'blank' || r.status === 'error') r.status = 'manual';
+      save();
+      const tr = t.closest('tr'); $('.grade', tr).textContent = gradeFor(r.scores) ?? '';
+      t.className = 'score-sel ' + (t.value ? 'l' + Math.min(3, levelForPoints(Number(t.value))) : '');
+      renderReviewCounts();
+    }
+    if (t.dataset.move && t.value) {
+      const from = t.dataset.move, to = t.value;
+      RT.parts.filter(p => p.studentKey === from).forEach(p => { p.studentKey = to; p.source = 'you'; });
+      if (S.results[from] && !S.results[from].edited) delete S.results[from];
+      RT.open = null; renderAll(); renderReview();
+      if (S.settings.apiKey && workParts(to).length) { toast(`Grading ${fullName(stu(to))}...`); RT.stop = false; try { await gradeStudent(to); } catch (er) { toast(er.message); } renderReview(); }
+    }
+  });
+  $('#reviewTable').addEventListener('input', e => {
+    const t = e.target; if (!t.dataset.field) return;
+    const r = S.results[t.dataset.key] = S.results[t.dataset.key] || { status: 'manual', flags: [] };
+    r[t.dataset.field] = t.value; save();
+  });
+  $('#reviewTable').addEventListener('click', async e => {
+    const o = e.target.closest('[data-open]'); if (o) { RT.open = RT.open === o.dataset.open ? null : o.dataset.open; renderReview(); return; }
+    const img = e.target.closest('img[data-lb]');
+    if (img) { const pages = workParts(img.dataset.lb).flatMap(partPages); openLightbox(pages, Number(img.dataset.i)); return; }
+    const rg = e.target.closest('[data-regrade]');
+    if (rg) {
+      const k = rg.dataset.regrade; rg.disabled = true; rg.textContent = 'Grading...'; RT.stop = false;
+      try { if (S.results[k]) S.results[k].edited = false; await gradeStudent(k); } catch (er) { toast(er.message); }
+      renderReview(); return;
+    }
+    const cl = e.target.closest('[data-clear]');
+    if (cl && confirm('Clear this grade and notes?')) { delete S.results[cl.dataset.clear]; save(); renderReview(); return; }
+    const uf = e.target.closest('[data-unflag]');
+    if (uf) { const r = S.results[uf.dataset.unflag]; r.flags.splice(Number(uf.dataset.i), 1); save(); renderReview(); }
+  });
+  $('#tray').addEventListener('change', e => { const t = e.target; if (t.dataset.assign && t.value) assignPart(t.dataset.assign, t.value); });
+  $('#tray').addEventListener('click', e => {
+    const ig = e.target.closest('[data-ignore]'); if (ig) { const p = RT.parts.find(x => x.id === ig.dataset.ignore); if (p) p.ignored = true; renderReview(); renderFiles(); return; }
+    const img = e.target.closest('img[data-lbpart]'); if (img) { const p = RT.parts.find(x => x.id === img.dataset.lbpart); openLightbox(partPages(p), Number(img.dataset.i)); }
+  });
+  // lightbox
+  $('#lbPrev').addEventListener('click', () => { RT.lb.i = (RT.lb.i - 1 + RT.lb.list.length) % RT.lb.list.length; showLb(); });
+  $('#lbNext').addEventListener('click', () => { RT.lb.i = (RT.lb.i + 1) % RT.lb.list.length; showLb(); });
+  $('#lbClose').addEventListener('click', () => $('#lightbox').classList.remove('open'));
+  $('#lightbox').addEventListener('click', e => { if (e.target.id === 'lightbox') $('#lightbox').classList.remove('open'); });
+  document.addEventListener('keydown', e => {
+    if (!$('#lightbox').classList.contains('open')) return;
+    if (e.key === 'Escape') $('#lightbox').classList.remove('open');
+    if (e.key === 'ArrowRight') $('#lbNext').click();
+    if (e.key === 'ArrowLeft') $('#lbPrev').click();
+  });
+  // exports
+  $('#csvButtons').addEventListener('click', e => { const b = e.target.closest('[data-csv]'); if (!b) return; b.dataset.csv === 'all' ? downloadAllCsv() : download(csvName(b.dataset.csv), eschoolCsv(Number(b.dataset.csv))); });
+  $('#pdfButtons').addEventListener('click', e => { const b = e.target.closest('[data-pdf]'); if (b) downloadPdfs(b.dataset.pdf === 'all' ? 'all' : Number(b.dataset.pdf)); });
+  $('#btnNotesCsv').addEventListener('click', notesCsv);
+  $('#btnRubricJson').addEventListener('click', () => download(safeFile(`${S.assignment.title} rubric.json`), rubricJson(), 'application/json'));
+  $('#btnBackup').addEventListener('click', () => {
+    const copy = JSON.parse(JSON.stringify(S)); copy.settings.apiKey = ''; copy.mail.key = '';
+    download(safeFile(`Quest Grader backup ${S.assignment.title} ${S.assignment.date}.json`), JSON.stringify(copy, null, 1), 'application/json');
+  });
+  $('#restoreInput').addEventListener('change', async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const j = JSON.parse(await f.text()); if (!j.results || !j.rubric) throw new Error('Not a Quest Grader backup');
+      if (!confirm('Replace the current grades, roster, rubric, and quests with this backup? Your API key and mailer key stay.')) return;
+      const keep = { apiKey: S.settings.apiKey, mailKey: S.mail.key };
+      S = { ...freshState(), ...j }; S.settings.apiKey = keep.apiKey; if (!S.mail.key) S.mail.key = keep.mailKey;
+      save(); renderAll(); toast('Backup restored.');
+    } catch (er) { toast("Couldn't restore: " + er.message); }
+  });
+  // email
+  $('#mailCode').addEventListener('change', readMailCode);
+  $('#mailKey').addEventListener('change', readMailCode);
+  ['#mailFrom', '#mailSubject', '#mailBody'].forEach(id => $(id).addEventListener('input', saveMailFields));
+  $('#mailPeriod').addEventListener('change', renderMailTable);
+  $('#btnPing').addEventListener('click', async () => {
+    if (!readMailCode()) return;
+    $('#mailStatus').textContent = 'Checking...';
+    try { const r = await mailPost({ action: 'ping' }); $('#mailStatus').innerHTML = `<span class="chip ok">Connected. Sending as ${esc(r.me)}, ${r.remaining} emails left today</span>`; }
+    catch (e) { $('#mailStatus').innerHTML = `<span class="chip bad">${esc(e.message)}</span>`; }
+  });
+  $('#mailTable').addEventListener('change', e => { const k = e.target.dataset.mail; if (!k) return; MAIL.touched = true; e.target.checked ? MAIL.checked.add(k) : MAIL.checked.delete(k); renderMailTable(); });
+  $('#btnMailAll').addEventListener('click', () => { MAIL.touched = true; mailCandidates().filter(s => s.email).forEach(s => MAIL.checked.add(s.key)); renderMailTable(); });
+  $('#btnMailNone').addEventListener('click', () => { MAIL.touched = true; MAIL.checked.clear(); renderMailTable(); });
+  $('#btnMailTest').addEventListener('click', () => sendMail(true));
+  $('#btnMailSend').addEventListener('click', () => sendMail(false));
+  $('#btnCopyScript').addEventListener('click', async () => { try { await navigator.clipboard.writeText(MAILER_SCRIPT); toast('Script copied.'); } catch (e) { toast('Select the script text and copy it.'); } });
+  window.addEventListener('beforeunload', e => { if (RT.running) { e.preventDefault(); e.returnValue = ''; } });
+}
+
+// ---------------- start ----------------
+(function init() {
+  const missing = ['JSZip', 'pdfjsLib', 'XLSX', 'jspdf'].filter(n => !window[n]);
+  wire(); renderUpPeriods(); renderAll(); switchTab(S.ui.tab || 'setup');
+  if (missing.length) toast('Some libraries did not load. Check your internet connection and reload. Missing: ' + missing.join(', '), 9000);
+})();
+</script>
+</body>
+</html>
