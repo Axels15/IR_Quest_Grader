@@ -24,10 +24,10 @@
   --red-soft: #fbe3e1;
   --green: #2c6e49;
   --green-soft: #ddf1e3;
-  --lv0: #d9f2df;
-  --lv1: #fff1c2;
-  --lv2: #fbdcdc;
-  --lv3: #e6e1f7;
+  --lv0: #d6e6f7;
+  --lv1: #d9f2df;
+  --lv2: #fff1c2;
+  --lv3: #fbdcdc;
   --shadow: 0 1px 2px rgba(29, 36, 51, .08);
   --radius: 8px;
   --font: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
@@ -50,10 +50,10 @@
     --red-soft: #3b1f1d;
     --green: #7fcf9c;
     --green-soft: #1b3326;
-    --lv0: #1f3b2a;
-    --lv1: #3d3519;
-    --lv2: #45252a;
-    --lv3: #2d2846;
+    --lv0: #1f3047;
+    --lv1: #1f3b2a;
+    --lv2: #3d3519;
+    --lv3: #45252a;
     --shadow: none;
     color-scheme: dark;
   }
@@ -497,7 +497,7 @@ const QUEST_CARDS = [
   { n: 33, name: "Emoji Analysis", text: "Pick five emojis for a chapter that reflect the main mood/tone and include one paragraph explaining each choice." }
 ];
 
-const DEFAULT_RUBRIC = {
+const OLD_RUBRIC_V1 = {
   criteria: ['Creative Expression', 'Task Criteria'],
   levels: ['Exceptional', 'Average', 'Needs Improvement'],
   descriptions: {
@@ -510,11 +510,39 @@ const DEFAULT_RUBRIC = {
   }
 };
 
-const DEFAULT_GUIDANCE = `Grade in an easy-going way. These quests exist to show that students are actually doing their independent reading and putting some thought into the assignment. The work doesn't need to be amazing.
+const DEFAULT_RUBRIC = {
+  criteria: ['Creative Expression', 'Task Criteria', 'Evidence of Independent Reading'],
+  levels: ['4 - Exceeds Mastery', '3 - Mastery', '2 - Approaching Mastery', '1 - Below Mastery'],
+  descriptions: {
+    '0_0': 'Goes above and beyond to creatively express their analytical interpretation of the task',
+    '0_1': 'Creatively expresses their interpretation of the task with clear thought and effort',
+    '0_2': 'Shows some creativity, but the interpretation of the task is basic or underdeveloped',
+    '0_3': 'Lack of creativity to express the task',
+    '1_0': 'Meets all requirements of the task, with extra detail or depth beyond what was asked',
+    '1_1': 'Meets all requirements of the task',
+    '1_2': 'Meets most of the requirements of the task',
+    '1_3': 'Meets only some of the requirements of the task',
+    '2_0': 'Rich, specific details from the book (characters, events, quotes, small moments) make it clear the student has been reading consistently and closely',
+    '2_1': 'Specific details from the book show the student has been reading independently',
+    '2_2': 'Some details from the book, but they are general or could come from the cover, a summary, or the first few pages',
+    '2_3': 'Little or no evidence from the book; the work could have been done without reading it'
+  }
+};
+
+const OLD_GUIDANCE_V1 = `Grade in an easy-going way. These quests exist to show that students are actually doing their independent reading and putting some thought into the assignment. The work doesn't need to be amazing.
 
 Reward specific details that only come from reading the book: character names, particular events, page numbers, quotes, small moments. Polish, art skill, spelling, and handwriting matter much less than evidence of reading and real effort.
 
 A 3 means the student went above and beyond. A 2 is solid, ordinary work. A 1 means very little effort, very little of the task, or almost nothing that shows reading.
+
+Watch for signs that a student used AI or copied text instead of reading: adult-sounding polished phrasing, summaries that read like the back cover or a website, general statements with no specific details, or two different versions of the same work. It can be hard to tell, so flag it for me and explain why, but score the work as written.`;
+const DEFAULT_GUIDANCE = `Grade in an easy-going way. These quests exist to show that students are actually doing their independent reading and putting some thought into the assignment. The work doesn't need to be amazing.
+
+Reward specific details that only come from reading the book: character names, particular events, page numbers, quotes, small moments. Polish, art skill, spelling, and handwriting matter much less than evidence of reading and real effort.
+
+A 4 means the student went above and beyond. A 3 is solid work that does what the quest asks. A 2 is partway there: some of the task, or thin detail. A 1 means very little effort, very little of the task, or almost nothing that shows reading.
+
+The Evidence of Independent Reading row is about whether the work shows the student has actually been reading the book on their own over the past couple of weeks, not just skimming the cover, a summary, or the first chapter. Specific, accurate details from deeper in the book are the strongest sign.
 
 Watch for signs that a student used AI or copied text instead of reading: adult-sounding polished phrasing, summaries that read like the back cover or a website, general statements with no specific details, or two different versions of the same work. It can be hard to tell, so flag it for me and explain why, but score the work as written.`;
 
@@ -549,6 +577,8 @@ function loadState() {
     if (!raw) return freshState();
     const base = freshState();
     const s = JSON.parse(raw);
+    if (s.guidance === OLD_GUIDANCE_V1) s.guidance = DEFAULT_GUIDANCE;
+    if (s.rubric && JSON.stringify(s.rubric) === JSON.stringify(OLD_RUBRIC_V1)) s.rubric = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
     return { ...base, ...s, settings: { ...base.settings, ...s.settings }, assignment: { ...base.assignment, ...s.assignment },
       mail: { ...base.mail, ...s.mail }, usage: { ...base.usage, ...s.usage }, ui: { ...base.ui, ...s.ui } };
   } catch (e) { console.warn('Could not read saved data', e); return freshState(); }
@@ -626,6 +656,10 @@ function nCrit() { return S.rubric.criteria.length; }
 function nLev() { return S.rubric.levels.length; }
 function pointsForLevel(li) { return nLev() - li; }
 function levelForPoints(pts) { return nLev() - pts; }
+// color slot for a level: 0 blue, 1 green, 2 yellow, 3 red (3-level rubrics skip blue)
+function lvIdx(li) { return Math.max(0, Math.min(3, li + Math.max(0, 4 - nLev()))); }
+// header label: skip "(4)" when the level name already starts with its number
+function levelLabel(l, li) { return /^\s*\d/.test(l) ? l : `${l} (${pointsForLevel(li)})`; }
 function gradeFor(scores) {
   if (!scores || scores.length !== nCrit() || scores.some(v => v == null || v === '' || isNaN(v))) return null;
   const total = scores.reduce((a, b) => a + Number(b), 0);
@@ -1479,7 +1513,7 @@ function renderReview() {
 }
 function scoreSelect(key, ci, val) {
   const opts = ['<option value="">–</option>'].concat(S.rubric.levels.map((l, li) => `<option value="${pointsForLevel(li)}" ${Number(val) === pointsForLevel(li) ? 'selected' : ''}>${pointsForLevel(li)}</option>`));
-  const cls = val ? 'l' + Math.min(3, levelForPoints(Number(val))) : '';
+  const cls = val ? 'l' + lvIdx(levelForPoints(Number(val))) : '';
   return `<select class="score-sel ${cls}" data-score="${ci}" data-key="${esc(key)}" aria-label="${esc(S.rubric.criteria[ci])}">${opts.join('')}</select>`;
 }
 function reviewRow(s) {
@@ -1589,7 +1623,7 @@ function pdfSafe(t) {
   return String(t ?? '').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-')
     .replace(/\u2026/g, '...').replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\u00FF]/g, '');
 }
-const LV_RGB = [[205, 238, 214], [255, 236, 170], [250, 210, 210], [226, 219, 247], [214, 230, 247]];
+const LV_RGB = [[205, 224, 247], [205, 238, 214], [255, 236, 170], [250, 210, 210]];
 function buildPdf(s) {
   const r = S.results[s.key]; const { jsPDF } = window.jspdf;
   const L = S.rubric.levels, C = S.rubric.criteria;
@@ -1612,7 +1646,7 @@ function buildPdf(s) {
   doc.setFillColor(238, 241, 245); doc.rect(M, y, W - 2 * M, hh, 'F');
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9.5);
   doc.text('Row', M + 6, y + 18);
-  L.forEach((l, li) => { const t = doc.splitTextToSize(pdfSafe(`${l} (${pointsForLevel(li)})`), lw - 10); doc.text(t, M + cw + li * lw + 6, t.length > 1 ? y + 13 : y + 18); });
+  L.forEach((l, li) => { const t = doc.splitTextToSize(pdfSafe(levelLabel(l, li)), lw - 10); doc.text(t, M + cw + li * lw + 6, t.length > 1 ? y + 13 : y + 18); });
   doc.text('Score', M + cw + L.length * lw + 6, y + 18);
   doc.rect(M, y, W - 2 * M, hh);
   y += hh;
@@ -1625,7 +1659,7 @@ function buildPdf(s) {
     if (y + rh > H - 140) { doc.addPage(); y = M; }
     const pts = r.scores[ci]; const li = levelForPoints(pts);
     const x0 = M + cw + li * lw;
-    const col = LV_RGB[Math.min(li, LV_RGB.length - 1)];
+    const col = LV_RGB[lvIdx(li)];
     doc.setFillColor(...col); doc.rect(x0, y, lw, rh, 'F'); doc.rect(M + cw + L.length * lw, y, sw, rh, 'F');
     doc.setTextColor(29, 36, 51);
     doc.text(cl, M + 6, y + 15);
@@ -1940,7 +1974,7 @@ function wire() {
       r.edited = true; if (r.status === 'blank' || r.status === 'error') r.status = 'manual';
       save();
       const tr = t.closest('tr'); $('.grade', tr).textContent = gradeFor(r.scores) ?? '';
-      t.className = 'score-sel ' + (t.value ? 'l' + Math.min(3, levelForPoints(Number(t.value))) : '');
+      t.className = 'score-sel ' + (t.value ? 'l' + lvIdx(levelForPoints(Number(t.value))) : '');
       renderReviewCounts();
     }
     if (t.dataset.move && t.value) {
