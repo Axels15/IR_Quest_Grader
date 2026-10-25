@@ -185,6 +185,14 @@ tr.detail > td { background: var(--desk); padding: 16px; }
 .whys { margin: 6px 0 0; padding-left: 18px; font-size: .88rem; }
 
 /* unmatched tray */
+.adj-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.adj-table th, .adj-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+.adj-table th { font-size: .8rem; color: var(--muted); font-weight: 700; }
+.adj-table select { width: auto; min-width: 190px; }
+.levelbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--teal-soft); }
+.adj-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.adj-row label { display: flex; flex-direction: column; gap: 3px; font-size: .82rem; color: var(--muted); }
+.adj-row select { width: auto; }
 .tray { border: 2px solid var(--hi); background: var(--paper); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; }
 .tray-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; max-height: 560px; overflow: auto; margin-top: 10px; }
 .tray-item { border: 1px solid var(--line); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
@@ -279,6 +287,13 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
       <div id="taskList"></div>
     </div>
 
+    <div class="card span2">
+      <div class="card-head"><h2>Grading level and glows/grows</h2></div>
+      <p class="hint">Grading level tells Claude to grade more leniently or more strictly. Glows/grows are short bullet points (what's there, what's missing) that print on the student's rubric PDF below the rubric when turned on. A student's own setting (on their row in the Review tab) beats their class, and a class beats Everyone.</p>
+      <div class="rubric-wrap" style="margin-top:10px"><table class="adj-table" id="adjTable"></table></div>
+      <p class="hint" style="margin-top:8px">Changing a grading level doesn't change grades that are already done. The Review tab shows who's affected and lets you grade them again.</p>
+    </div>
+
     <div class="card">
       <div class="card-head"><h2>How to grade</h2></div>
       <label class="f" for="guidance">Guidance for Claude</label>
@@ -359,6 +374,7 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
     </div>
     <div class="summary" id="reviewSummary"></div>
   </div>
+  <div id="levelBar"></div>
   <div class="rtable-wrap"><table class="rtable" id="reviewTable"></table></div>
 </section>
 
@@ -375,6 +391,7 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
       <p class="hint">A one-page PDF per graded student with the highlighted rubric, row scores, total, and grade.</p>
       <label class="row" style="margin-top:10px"><input type="checkbox" id="pdfComments" checked> Include the comment to the student</label>
       <label class="row" style="margin-top:6px"><input type="checkbox" id="pdfBook" checked> Show the book title</label>
+      <p class="hint" style="margin-top:6px">Glows/grows print below the rubric for students who have them turned on (Set up tab, or a student's row on the Review tab).</p>
       <div id="pdfButtons" class="row" style="margin-top:10px"></div>
     </div>
     <div class="card">
@@ -566,6 +583,7 @@ function freshState() {
     sent: {},            // assignmentId -> {studentKey: iso}
     mail: { ...DEFAULT_MAIL },
     usage: { input: 0, output: 0, calls: 0 },
+    adjust: { level: { all: 0, p: {}, s: {} }, gg: { all: false, p: {}, s: {} } },
     ui: { tab: 'setup', period: null, filter: 'all', upPeriod: 'auto' }
   };
 }
@@ -579,6 +597,7 @@ function loadState() {
     const s = JSON.parse(raw);
     if (s.guidance === OLD_GUIDANCE_V1) s.guidance = DEFAULT_GUIDANCE;
     if (s.rubric && JSON.stringify(s.rubric) === JSON.stringify(OLD_RUBRIC_V1)) s.rubric = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
+    if (s.adjust) s.adjust = { level: { ...base.adjust.level, ...s.adjust.level }, gg: { ...base.adjust.gg, ...s.adjust.gg } };
     return { ...base, ...s, settings: { ...base.settings, ...s.settings }, assignment: { ...base.assignment, ...s.assignment },
       mail: { ...base.mail, ...s.mail }, usage: { ...base.usage, ...s.usage }, ui: { ...base.ui, ...s.ui } };
   } catch (e) { console.warn('Could not read saved data', e); return freshState(); }
@@ -660,6 +679,29 @@ function levelForPoints(pts) { return nLev() - pts; }
 function lvIdx(li) { return Math.max(0, Math.min(3, li + Math.max(0, 4 - nLev()))); }
 // header label: skip "(4)" when the level name already starts with its number
 function levelLabel(l, li) { return /^\s*\d/.test(l) ? l : `${l} (${pointsForLevel(li)})`; }
+// ---------------- grading level + glows/grows ----------------
+const LEVELS = [
+  { v: -2, name: 'Much more lenient', prompt: 'Grade this student much more leniently than usual. Give the benefit of the doubt on every row: when the work is near a level, give the higher one. As long as there is real effort and some sign of reading, missing or thin parts should cost little.' },
+  { v: -1, name: 'More lenient', prompt: 'Grade this student a little more leniently than usual. When the work falls between two levels, give the higher one.' },
+  { v: 0, name: 'Standard', prompt: '' },
+  { v: 1, name: 'Stricter', prompt: 'Grade this student a little more strictly than usual. When the work falls between two levels, give the lower one. Mastery should mean every part of the quest is done as written.' },
+  { v: 2, name: 'Much stricter', prompt: 'Grade this student much more strictly than usual. Save the top level for clearly exceptional work, require every part of the quest and specific details from the book for Mastery, and do not give the benefit of the doubt.' }
+];
+function levelName(v) { return (LEVELS.find(l => l.v === Number(v)) || LEVELS[2]).name; }
+function setVal(v) { return v !== undefined && v !== null && v !== ''; }
+function adjPick(kind, key) {
+  const a = S.adjust[kind], st = stu(key);
+  if (setVal(a.s[key])) return a.s[key];
+  if (st && setVal(a.p[st.period])) return a.p[st.period];
+  return a.all;
+}
+function adjPeriod(kind, p) { const a = S.adjust[kind]; return setVal(a.p[p]) ? a.p[p] : a.all; }
+function levelOf(key) { return Number(adjPick('level', key)) || 0; }
+function ggOn(key) { return !!adjPick('gg', key); }
+function levelChanged(key) {
+  const r = S.results[key];
+  return !!(r && r.gradedAt && rowState(key) === 'graded' && (Number(r.level) || 0) !== levelOf(key));
+}
 function gradeFor(scores) {
   if (!scores || scores.length !== nCrit() || scores.some(v => v == null || v === '' || isNaN(v))) return null;
   const total = scores.reduce((a, b) => a + Number(b), 0);
@@ -1206,9 +1248,11 @@ function gradeTool() {
           }
         },
         teacher_note: { type: 'string' },
-        student_comment: { type: 'string' }
+        student_comment: { type: 'string' },
+        glows: { type: 'array', maxItems: 3, items: { type: 'string' }, description: 'Short bullet fragments naming what is there. Not conversational.' },
+        grows: { type: 'array', maxItems: 3, items: { type: 'string' }, description: 'Short bullet fragments naming what is missing or thin. Not conversational.' }
       },
-      required: ['book_title', 'task_done', 'on_task', 'is_blank', 'scores', 'reading_evidence', 'flags', 'teacher_note', 'student_comment']
+      required: ['book_title', 'task_done', 'on_task', 'is_blank', 'scores', 'reading_evidence', 'flags', 'teacher_note', 'student_comment', 'glows', 'grows']
     }
   };
 }
@@ -1222,7 +1266,9 @@ function rubricBlock() {
   const L = S.rubric.levels;
   return S.rubric.criteria.map((c, ci) => `${c}\n` + L.map((l, li) => `  ${pointsForLevel(li)} points (${l}): ${S.rubric.descriptions[ci + '_' + li] || ''}`).join('\n')).join('\n');
 }
-function gradeSystem(period) {
+function gradeSystem(period, key) {
+  const lv = LEVELS.find(l => l.v === levelOf(key));
+  const levelBlock = lv && lv.prompt ? `\n\nGRADING LEVEL FOR THIS STUDENT\n${lv.prompt} This adjustment is private: never mention it in any notes, comments, glows, or grows.` : '';
   const off = S.offTask === 'asdone'
     ? 'If the student did a different quest than the one assigned, grade the work against the quest they actually did, set on_task to false, and add an off_task flag naming what they did.'
     : `If the student did a different quest than the one assigned, set on_task to false, add an off_task flag naming what they did, and give "${S.rubric.criteria.find(c => /task/i.test(c)) || 'the task criterion'}" the lowest score. Score the other rows on the work itself.`;
@@ -1235,7 +1281,7 @@ RUBRIC (whole points only, ${nLev()} is highest and 1 is lowest)
 ${rubricBlock()}
 
 HOW MR. AXELSON GRADES
-${S.guidance}
+${S.guidance}${levelBlock}
 
 DIFFERENT QUEST
 ${off}
@@ -1246,7 +1292,8 @@ RULES
 - If there is no real work (an empty template, or only a name), set is_blank to true, give every row 1 point, and say so in the teacher note.
 - Flags are for the teacher only. Flag possible AI use or copied text, a different quest, missing parts, spoilers when the quest says to avoid them, anything the teacher should look at for the student's wellbeing or school-appropriateness, a name on the work that doesn't match the student, or two different versions of the same work. Explain each flag in one sentence. Still score the work as written.
 - teacher_note: two or three plain sentences for Mr. Axelson using the student's first name: what they made, what shows they read, and anything to check.
-- student_comment: two or three sentences written by Mr. Axelson to the student, in first person, starting with the student's first name. Name one specific thing in their work that is genuinely good, then one concrete thing to push on next time. Warm and honest, no humor, no exclamation-only praise like "Great job!", and never mention AI, flags, or the grade. If the work is blank, off-task, or too thin to praise honestly, write a calm note naming what was missing and inviting them to check in with you, with no invented praise.`;
+- student_comment: two or three sentences written by Mr. Axelson to the student, in first person, starting with the student's first name. Name one specific thing in their work that is genuinely good, then one concrete thing to push on next time. Warm and honest, no humor, no exclamation-only praise like "Great job!", and never mention AI, flags, or the grade. If the work is blank, off-task, or too thin to praise honestly, write a calm note naming what was missing and inviting them to check in with you, with no invented praise.
+- glows and grows: short bullet points that go on the student's rubric. They are not conversational. No names, no "you" or "I", no praise words like great or awesome, no exclamation points, and never mention AI, flags, or the grade. Each one is a plain fragment of about 3 to 10 words tied to a rubric row or a requirement of the quest, and they must match the scores. Prefer generic wording. Glows name what is there, like "All five emojis included", "Specific events from the book", "Clear reason for each choice". Grows name what is missing or thin, like "Explanation for emoji 4 is missing", "Not enough detail to show reading", "Paragraphs shorter than the 3-4 sentences asked". Give 1 to 3 of each. If nothing is honestly strong, leave glows empty. If the work is blank, glows is empty and grows is ["No work submitted"].`;
 }
 async function gradeStudent(key) {
   const s = stu(key); if (!s) return;
@@ -1273,7 +1320,9 @@ async function gradeStudent(key) {
 
   const sig = partSig(key);
   try {
-    const out = await callClaude({ system: gradeSystem(s.period), content, tool: gradeTool(), maxTokens: 4000 });
+    const level = levelOf(key);
+    const out = await callClaude({ system: gradeSystem(s.period, key), content, tool: gradeTool(), maxTokens: 4000 });
+    const bullets = v => (Array.isArray(v) ? v : []).map(x => String(x || '').trim().replace(/^[-*\u2022]\s*/, '')).filter(Boolean).slice(0, 3);
     const scores = S.rubric.criteria.map((c, i) => {
       const hit = (out.scores || []).find(x => norm(x.criterion) === norm(c)) || (out.scores || [])[i] || {};
       const v = Math.round(Number(hit.points)); return v >= 1 && v <= nLev() ? v : null;
@@ -1284,6 +1333,7 @@ async function gradeStudent(key) {
       book: out.book_title || '', task: out.task_done || '', onTask: out.on_task !== false,
       nameOnWork: out.name_on_work || '', evidence: out.reading_evidence || '',
       flags: (out.flags || []).filter(f => FLAG_TYPES[f.type]), teacherNote: out.teacher_note || '', comment: out.student_comment || '',
+      glows: bullets(out.glows), grows: bullets(out.grows), level,
       files: docs.map(d => d.name), sig, gradedAt: new Date().toISOString(), edited: false, model: modelId()
     };
   } catch (e) {
@@ -1364,7 +1414,30 @@ function renderSetup() {
   $('#apiKey').value = S.settings.apiKey; $('#model').value = S.settings.model; $('#customModel').value = S.settings.customModel;
   $('#customModelWrap').classList.toggle('hidden', S.settings.model !== 'custom');
   $('#parallel').value = S.settings.parallel;
-  renderConv(); renderRoster(); renderRubric(); renderTasks(); renderUsage();
+  renderConv(); renderRoster(); renderRubric(); renderTasks(); renderAdjust(); renderUsage();
+}
+function renderAdjust() {
+  const a = S.adjust;
+  const lvOpts = (cur, inherit) => (inherit != null ? [`<option value="" ${!setVal(cur) ? 'selected' : ''}>Same as everyone (${esc(levelName(inherit))})</option>`] : [])
+    .concat(LEVELS.map(l => `<option value="${l.v}" ${setVal(cur) && Number(cur) === l.v ? 'selected' : ''}>${esc(l.name)}</option>`)).join('');
+  const ggOpts = (cur, inherit) => (inherit != null ? [`<option value="" ${!setVal(cur) ? 'selected' : ''}>Same as everyone (${inherit ? 'On' : 'Off'})</option>`] : [])
+    .concat([`<option value="1" ${setVal(cur) && cur ? 'selected' : ''}>On</option>`, `<option value="0" ${setVal(cur) && !cur ? 'selected' : ''}>Off</option>`]).join('');
+  let h = `<thead><tr><th>Who</th><th>Grading level</th><th>Glows/grows on PDF</th><th></th></tr></thead><tbody>
+    <tr><td><b>Everyone</b></td><td><select data-alevel="all">${lvOpts(a.level.all, null)}</select></td><td><select data-agg="all">${ggOpts(a.gg.all, null)}</select></td><td></td></tr>`;
+  for (const p of periods()) {
+    const ind = studentsIn(p).filter(st => setVal(a.level.s[st.key]) || setVal(a.gg.s[st.key])).length;
+    h += `<tr><td>Period ${p}</td><td><select data-alevel="${p}">${lvOpts(a.level.p[p], a.level.all)}</select></td><td><select data-agg="${p}">${ggOpts(a.gg.p[p], a.gg.all)}</select></td>
+      <td class="hint">${ind ? `${ind} student${ind > 1 ? 's' : ''} set individually` : ''}</td></tr>`;
+  }
+  $('#adjTable').innerHTML = h + '</tbody>';
+}
+function renderLevelBar() {
+  const p = S.ui.period;
+  const changed = studentsIn(p).filter(st => levelChanged(st.key));
+  if (!changed.length) { $('#levelBar').innerHTML = ''; return; }
+  const ready = changed.filter(st => workParts(st.key).length), missing = changed.length - ready.length;
+  $('#levelBar').innerHTML = `<div class="levelbar"><span><b>${changed.length}</b> graded student${changed.length > 1 ? 's have' : ' has'} a new grading level that isn't applied yet.${missing ? ` ${missing} need${missing > 1 ? '' : 's'} their work re-uploaded first.` : ''} Grading again replaces any score edits you made for them.</span>
+    ${ready.length ? `<button class="btn small" id="btnRegradeLevel">Grade ${ready.length} again</button>` : ''}</div>`;
 }
 function renderConv() {
   const max = nCrit() * nLev(), min = nCrit();
@@ -1510,6 +1583,7 @@ function renderReview() {
   for (const s of list) h += reviewRow(s);
   if (!list.length) h += `<tr><td colspan="${C.length + 4}" class="hint" style="padding:16px">Nobody here.</td></tr>`;
   $('#reviewTable').innerHTML = h + '</tbody>';
+  renderLevelBar();
 }
 function scoreSelect(key, ci, val) {
   const opts = ['<option value="">–</option>'].concat(S.rubric.levels.map((l, li) => `<option value="${pointsForLevel(li)}" ${Number(val) === pointsForLevel(li) ? 'selected' : ''}>${pointsForLevel(li)}</option>`));
@@ -1524,6 +1598,8 @@ function reviewRow(s) {
   const chips = [];
   if (st === 'error') chips.push(`<span class="chip bad" title="${esc(r.error)}">Error</span>`);
   if (r.edited) chips.push('<span class="chip info">Edited</span>');
+  if (levelOf(s.key) !== 0) chips.push(`<span class="chip">${esc(levelName(levelOf(s.key)))}</span>`);
+  if (levelChanged(s.key)) chips.push(`<span class="chip bad" title="Graded at ${esc(levelName(r.level || 0))}. Grade again to apply the new level.">Level changed</span>`);
   (r.flags || []).forEach(f => chips.push(`<span class="chip flag" title="${esc(f.note)}">${esc(FLAG_TYPES[f.type] || f.type)}</span>`));
   const open = RT.open === s.key;
   let h = `<tr class="main" data-row="${esc(s.key)}"><td class="who">${esc(s.first)} ${esc(s.last)}<small>${sub}</small></td>
@@ -1554,6 +1630,7 @@ function detailHtml(s) {
       </div>
     </div>
     <div>
+      ${adjustHtml(s, r)}
       <dl class="kv">
         <dt>Book</dt><dd><input type="text" data-field="book" data-key="${esc(s.key)}" value="${esc(r.book || '')}"></dd>
         <dt>Quest done</dt><dd>${esc(r.task || '')}${r.onTask === false ? ' <span class="chip flag">not the assigned quest</span>' : ''}</dd>
@@ -1566,8 +1643,22 @@ function detailHtml(s) {
       <textarea data-field="teacherNote" data-key="${esc(s.key)}" rows="3">${esc(r.teacherNote || '')}</textarea>
       <label class="f">Comment to ${esc(s.first)} (goes on the PDF)</label>
       <textarea data-field="comment" data-key="${esc(s.key)}" rows="3">${esc(r.comment || '')}</textarea>
+      <div class="row" style="margin-top:4px;align-items:flex-start">
+        <div class="grow"><label class="f">Glows (one per line)</label><textarea data-list="glows" data-key="${esc(s.key)}" rows="3">${esc((r.glows || []).join('\n'))}</textarea></div>
+        <div class="grow"><label class="f">Grows (one per line)</label><textarea data-list="grows" data-key="${esc(s.key)}" rows="3">${esc((r.grows || []).join('\n'))}</textarea></div>
+      </div>
+      <p class="hint" style="margin-top:4px">${ggOn(s.key) ? 'Glows/grows will print on the PDF.' : 'Glows/grows are off for this student, so they won\'t print.'}${r.gradedAt && !r.glows ? ' This was graded before glows/grows existed: grade again or type them in.' : ''}</p>
       ${r.error ? `<p class="hint" style="color:var(--red);margin-top:6px">Last error: ${esc(r.error)}</p>` : ''}
     </div></div>`;
+}
+function adjustHtml(s, r) {
+  const a = S.adjust, pl = adjPeriod('level', s.period), pg = adjPeriod('gg', s.period);
+  const cl = a.level.s[s.key], cg = a.gg.s[s.key];
+  const lv = `<option value="" ${!setVal(cl) ? 'selected' : ''}>Same as class (${esc(levelName(pl))})</option>` + LEVELS.map(l => `<option value="${l.v}" ${setVal(cl) && Number(cl) === l.v ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
+  const gg = `<option value="" ${!setVal(cg) ? 'selected' : ''}>Same as class (${pg ? 'On' : 'Off'})</option><option value="1" ${setVal(cg) && cg ? 'selected' : ''}>On</option><option value="0" ${setVal(cg) && !cg ? 'selected' : ''}>Off</option>`;
+  let note = '';
+  if (levelChanged(s.key)) note = `<p class="hint" style="color:var(--red);margin:-4px 0 10px">Graded at ${esc(levelName(r.level || 0))}. ${workParts(s.key).length ? 'Use Grade again to apply the new level.' : 'Re-upload their work, then use Grade again to apply the new level.'}</p>`;
+  return `<div class="adj-row"><label>Grading level<select data-slevel="${esc(s.key)}">${lv}</select></label><label>Glows/grows on PDF<select data-sgg="${esc(s.key)}">${gg}</select></label></div>${note}`;
 }
 function renderTray() {
   const un = unassignedParts();
@@ -1686,6 +1777,24 @@ function buildPdf(s) {
   };
   rowT('Rubric total', `${total} / ${max}`);
   rowT('Grade', Number(S.assignment.points) === 100 ? `${g}%` : `${g} / ${S.assignment.points}`);
+  const lists = ggOn(s.key) ? [['Glows', r.glows || [], [233, 247, 237]], ['Grows', r.grows || [], [255, 246, 214]]].filter(x => x[1].length) : [];
+  if (lists.length) {
+    y += 18;
+    const gap = 12, colW = (W - 2 * M - gap * (lists.length - 1)) / lists.length;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    const wrapped = lists.map(([, items]) => items.map(t => doc.splitTextToSize(pdfSafe(t), colW - 34)));
+    const bh = Math.max(...wrapped.map(ws => 30 + ws.reduce((n, w) => n + w.length * 13 + 4, 0))) + 6;
+    if (y + bh > H - M) { doc.addPage(); y = M; }
+    lists.forEach(([title, , fill], i) => {
+      const x = M + i * (colW + gap);
+      doc.setFillColor(...fill); doc.rect(x, y, colW, bh, 'F'); doc.rect(x, y, colW, bh);
+      doc.setTextColor(29, 36, 51); doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text(title, x + 12, y + 18);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+      let yy = y + 34;
+      wrapped[i].forEach(w => { doc.setFillColor(29, 36, 51); doc.circle(x + 16, yy - 3.4, 1.7, 'F'); doc.text(w, x + 24, yy); yy += w.length * 13 + 4; });
+    });
+    y += bh;
+  }
   if ($('#pdfComments').checked && r.comment && r.comment.trim()) {
     y += 22;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5);
@@ -1718,13 +1827,14 @@ async function downloadAllCsv() {
 }
 function notesCsv() {
   const C = S.rubric.criteria;
-  const rows = [['Period', 'Last Name', 'First Name', 'Student ID', 'Status', 'Book', 'Quest done', 'On assigned quest', ...C, 'Total', 'Grade', 'Flags', 'Note for teacher', 'Comment to student', 'Files']];
+  const rows = [['Period', 'Last Name', 'First Name', 'Student ID', 'Status', 'Book', 'Quest done', 'On assigned quest', ...C, 'Total', 'Grade', 'Flags', 'Note for teacher', 'Comment to student', 'Glows', 'Grows', 'Grading level', 'Files']];
   for (const p of periods()) for (const s of studentsIn(p)) {
     const r = S.results[s.key] || {}; const st = rowState(s.key);
     rows.push([p, s.last, s.first, s.id, { graded: 'Graded', ungraded: 'Not graded', none: 'No work', blankfile: 'Blank doc', blank: 'Blank', error: 'Error' }[st],
       r.book || '', r.task || '', r.onTask === false ? 'No' : r.task ? 'Yes' : '', ...C.map((_, i) => r.scores ? (r.scores[i] ?? '') : ''),
       r.scores && st === 'graded' ? totalFor(r.scores) : '', st === 'graded' ? gradeFor(r.scores) : '',
-      (r.flags || []).map(f => `${FLAG_TYPES[f.type] || f.type}: ${f.note}`).join(' | '), r.teacherNote || '', r.comment || '', (r.files || []).join('; ')]);
+      (r.flags || []).map(f => `${FLAG_TYPES[f.type] || f.type}: ${f.note}`).join(' | '), r.teacherNote || '', r.comment || '',
+      (r.glows || []).join(' | '), (r.grows || []).join(' | '), r.gradedAt ? levelName(r.level || 0) : levelName(levelOf(s.key)), (r.files || []).join('; ')]);
   }
   download(safeFile(`${S.assignment.title} teacher notes.csv`), toCsv(rows));
 }
@@ -1963,6 +2073,28 @@ function wire() {
   $('#btnStop').addEventListener('click', () => { RT.stop = true; toast('Stopping after the current requests finish...'); });
   $('#btnClearFiles').addEventListener('click', () => { if (confirm('Remove all uploaded files? Grades already made stay.')) { RT.docs = []; RT.parts = []; RT.hashes.clear(); renderAll(); } });
   // review
+  $('#adjTable').addEventListener('change', e => {
+    const t = e.target, a = S.adjust;
+    if (t.dataset.alevel != null) {
+      const v = t.value === '' ? null : Number(t.value);
+      if (t.dataset.alevel === 'all') a.level.all = v ?? 0; else { if (v == null) delete a.level.p[t.dataset.alevel]; else a.level.p[t.dataset.alevel] = v; }
+    }
+    if (t.dataset.agg != null) {
+      const v = t.value === '' ? null : t.value === '1';
+      if (t.dataset.agg === 'all') a.gg.all = !!v; else { if (v == null) delete a.gg.p[t.dataset.agg]; else a.gg.p[t.dataset.agg] = v; }
+    }
+    save(); renderAdjust();
+  });
+  $('#levelBar').addEventListener('click', async e => {
+    const b = e.target.closest('#btnRegradeLevel'); if (!b) return;
+    if (!S.settings.apiKey) { toast('Add your Anthropic API key on the Set up tab first.'); return; }
+    const keys = studentsIn(S.ui.period).filter(st => levelChanged(st.key) && workParts(st.key).length).map(st => st.key);
+    b.disabled = true; b.textContent = 'Grading...'; RT.stop = false;
+    let done = 0, errs = 0;
+    await runPool(keys, async k => { try { await gradeStudent(k); } catch (er) { errs++; } }, () => { done++; b.textContent = `Graded ${done} of ${keys.length}...`; });
+    if (errs) toast(`${errs} couldn't be graded. Open their rows to see why.`);
+    renderReview();
+  });
   $('#periodPills').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (b) { S.ui.period = Number(b.dataset.p); RT.open = null; save(); renderReview(); } });
   $('#filterPills').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { S.ui.filter = b.dataset.f; save(); renderReview(); } });
   $('#reviewTable').addEventListener('change', async e => {
@@ -1977,6 +2109,14 @@ function wire() {
       t.className = 'score-sel ' + (t.value ? 'l' + lvIdx(levelForPoints(Number(t.value))) : '');
       renderReviewCounts();
     }
+    if (t.dataset.slevel != null) {
+      if (t.value === '') delete S.adjust.level.s[t.dataset.slevel]; else S.adjust.level.s[t.dataset.slevel] = Number(t.value);
+      save(); renderReview(); return;
+    }
+    if (t.dataset.sgg != null) {
+      if (t.value === '') delete S.adjust.gg.s[t.dataset.sgg]; else S.adjust.gg.s[t.dataset.sgg] = t.value === '1';
+      save(); renderReview(); return;
+    }
     if (t.dataset.move && t.value) {
       const from = t.dataset.move, to = t.value;
       RT.parts.filter(p => p.studentKey === from).forEach(p => { p.studentKey = to; p.source = 'you'; });
@@ -1986,7 +2126,12 @@ function wire() {
     }
   });
   $('#reviewTable').addEventListener('input', e => {
-    const t = e.target; if (!t.dataset.field) return;
+    const t = e.target;
+    if (t.dataset.list) {
+      const r = S.results[t.dataset.key] = S.results[t.dataset.key] || { status: 'manual', flags: [] };
+      r[t.dataset.list] = t.value.split('\n').map(x => x.trim().replace(/^[-*\u2022]\s*/, '')).filter(Boolean); save(); return;
+    }
+    if (!t.dataset.field) return;
     const r = S.results[t.dataset.key] = S.results[t.dataset.key] || { status: 'manual', flags: [] };
     r[t.dataset.field] = t.value; save();
   });
