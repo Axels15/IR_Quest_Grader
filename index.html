@@ -569,11 +569,16 @@ const DEFAULT_MAIL = {
   body: 'Hi {first},\n\nAttached is your rubric for {assignment}. Look over your scores and the comment, and come see me if you have any questions.\n\nMr. Axelson'
 };
 
+// local date, not UTC: toISOString() rolls over to tomorrow on evenings in US time zones
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 function freshState() {
   return {
     v: 1,
     settings: { apiKey: '', model: 'claude-sonnet-5-5', customModel: '', parallel: 3 },
-    assignment: { title: 'IR Quest', date: new Date().toISOString().slice(0, 10), points: 100, minPass: 65 },
+    assignment: { title: 'IR Quest', date: todayISO(), points: 100, minPass: 65 },
     rubric: JSON.parse(JSON.stringify(DEFAULT_RUBRIC)),
     tasks: {},           // period -> [{name, text}]
     guidance: DEFAULT_GUIDANCE,
@@ -589,17 +594,19 @@ function freshState() {
 }
 
 let S = loadState();
+// Fill in anything an older save or backup is missing, and upgrade old defaults
+function mergeState(s) {
+  const base = freshState();
+  if (s.guidance === OLD_GUIDANCE_V1) s.guidance = DEFAULT_GUIDANCE;
+  if (s.rubric && JSON.stringify(s.rubric) === JSON.stringify(OLD_RUBRIC_V1)) s.rubric = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
+  if (s.adjust) s.adjust = { level: { ...base.adjust.level, ...s.adjust.level }, gg: { ...base.adjust.gg, ...s.adjust.gg } };
+  return { ...base, ...s, settings: { ...base.settings, ...s.settings }, assignment: { ...base.assignment, ...s.assignment },
+    mail: { ...base.mail, ...s.mail }, usage: { ...base.usage, ...s.usage }, ui: { ...base.ui, ...s.ui } };
+}
 function loadState() {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return freshState();
-    const base = freshState();
-    const s = JSON.parse(raw);
-    if (s.guidance === OLD_GUIDANCE_V1) s.guidance = DEFAULT_GUIDANCE;
-    if (s.rubric && JSON.stringify(s.rubric) === JSON.stringify(OLD_RUBRIC_V1)) s.rubric = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
-    if (s.adjust) s.adjust = { level: { ...base.adjust.level, ...s.adjust.level }, gg: { ...base.adjust.gg, ...s.adjust.gg } };
-    return { ...base, ...s, settings: { ...base.settings, ...s.settings }, assignment: { ...base.assignment, ...s.assignment },
-      mail: { ...base.mail, ...s.mail }, usage: { ...base.usage, ...s.usage }, ui: { ...base.ui, ...s.ui } };
+    return raw ? mergeState(JSON.parse(raw)) : freshState();
   } catch (e) { console.warn('Could not read saved data', e); return freshState(); }
 }
 let saveTimer = null;
@@ -702,8 +709,12 @@ function levelChanged(key) {
   const r = S.results[key];
   return !!(r && r.gradedAt && rowState(key) === 'graded' && (Number(r.level) || 0) !== levelOf(key));
 }
+// false when the rubric shape changed since grading (wrong number of rows, or a score above the top level)
+function scoresFit(scores) {
+  return Array.isArray(scores) && scores.length === nCrit() && scores.every(v => v == null || v === '' || (Number(v) >= 1 && Number(v) <= nLev()));
+}
 function gradeFor(scores) {
-  if (!scores || scores.length !== nCrit() || scores.some(v => v == null || v === '' || isNaN(v))) return null;
+  if (!scoresFit(scores) || scores.some(v => v == null || v === '' || isNaN(v))) return null;
   const total = scores.reduce((a, b) => a + Number(b), 0);
   const min = nCrit(), max = nCrit() * nLev();
   const minPass = Number(S.assignment.minPass) || 0;
@@ -1043,7 +1054,7 @@ function partSig(key) { return workParts(key).map(p => p.docId + ':' + (p.pages 
 function needsGrading(key) {
   const w = workParts(key); if (!w.length) return false;
   const r = S.results[key];
-  return !r || r.status === 'error' || (r.sig !== partSig(key) && !r.edited);
+  return !r || r.status === 'error' || !scoresFit(r.scores) || (r.sig !== partSig(key) && !r.edited);
 }
 // ---------------- Claude API ----------------
 // Some models refuse a forced tool_choice. When that happens we switch that model to
@@ -1094,7 +1105,11 @@ async function callClaude({ system, content, tool, maxTokens = 4000 }) {
       AUTO_TOOL_MODELS.add(model); body.tool_choice = { type: 'auto' }; continue;
     }
     if (res.status === 400 && /temperature/i.test(msg) && 'temperature' in body) { delete body.temperature; continue; }
-    if ([429, 500, 502, 503, 529].includes(res.status)) { lastErr = new Error(msg); await sleep(2000 * 2 ** attempt); continue; }
+    if ([429, 500, 502, 503, 529].includes(res.status)) {
+      lastErr = new Error(msg);
+      const wait = Number(res.headers.get('retry-after'));
+      await sleep(wait > 0 ? Math.min(60, wait) * 1000 + 250 : 2000 * 2 ** attempt); continue;
+    }
     if (res.status === 401) throw new Error('The API key was rejected. Check it on the Set up tab.');
     if (res.status === 404 || /model/i.test(msg) && res.status === 400) throw new Error(`Model "${model}": ${msg}`);
     throw new Error(msg);
@@ -1337,9 +1352,10 @@ async function gradeStudent(key) {
       files: docs.map(d => d.name), sig, gradedAt: new Date().toISOString(), edited: false, model: modelId()
     };
   } catch (e) {
+    // Stop isn't a failure: leave the student as they were
+    if (e.message === 'Stopped') return;
     const prev = S.results[key];
     S.results[key] = { ...(prev || {}), status: prev && prev.scores ? prev.status : 'error', error: e.message, sig: prev ? prev.sig : '' };
-    if (e.message === 'Stopped') return;
     throw e;
   } finally { save(); }
 }
@@ -1362,7 +1378,10 @@ async function runSplit() {
   setProg('runProg', 0, `Reading ${todo.length} unnamed file${todo.length > 1 ? 's' : ''} to find student names...`);
   await runPool(todo, async d => {
     try { await splitDoc(d); }
-    catch (e) { errs++; d.status = 'stack'; d.note = 'Sorting failed: ' + e.message; if (e.message.includes('API key')) RT.stop = true; }
+    catch (e) {
+      d.status = 'stack'; if (e.message === 'Stopped') return;
+      errs++; d.note = 'Sorting failed: ' + e.message; if (e.message.includes('API key')) RT.stop = true;
+    }
   }, (n, t) => { setProg('runProg', n / t, `Sorted ${n} of ${t} unnamed files${errs ? ` (${errs} failed)` : ''}`); renderFiles(); });
   renderAll();
   return todo.length;
@@ -1981,7 +2000,7 @@ function wire() {
     S.results = {}; RT.docs = []; RT.parts = []; RT.hashes.clear(); RT.open = null;
     const m = String(S.assignment.title).match(/^(.*?)(\d+)\s*$/);
     if (m) S.assignment.title = m[1] + (Number(m[2]) + 1);
-    S.assignment.date = new Date().toISOString().slice(0, 10);
+    S.assignment.date = todayISO();
     save(); renderAll(); toast('Ready for a new assignment.');
   });
   // roster
@@ -2181,7 +2200,7 @@ function wire() {
       const j = JSON.parse(await f.text()); if (!j.results || !j.rubric) throw new Error('Not a Quest Grader backup');
       if (!confirm('Replace the current grades, roster, rubric, and quests with this backup? Your API key and mailer key stay.')) return;
       const keep = { apiKey: S.settings.apiKey, mailKey: S.mail.key };
-      S = { ...freshState(), ...j }; S.settings.apiKey = keep.apiKey; if (!S.mail.key) S.mail.key = keep.mailKey;
+      S = mergeState(j); S.settings.apiKey = keep.apiKey; if (!S.mail.key) S.mail.key = keep.mailKey;
       save(); renderAll(); toast('Backup restored.');
     } catch (er) { toast("Couldn't restore: " + er.message); }
   });
@@ -2202,7 +2221,8 @@ function wire() {
   $('#btnMailTest').addEventListener('click', () => sendMail(true));
   $('#btnMailSend').addEventListener('click', () => sendMail(false));
   $('#btnCopyScript').addEventListener('click', async () => { try { await navigator.clipboard.writeText(MAILER_SCRIPT); toast('Script copied.'); } catch (e) { toast('Select the script text and copy it.'); } });
-  window.addEventListener('beforeunload', e => { if (RT.running) { e.preventDefault(); e.returnValue = ''; } });
+  // uploaded files live only in memory, so a reload loses them
+  window.addEventListener('beforeunload', e => { if (RT.running || RT.docs.length) { e.preventDefault(); e.returnValue = ''; } });
 }
 
 // ---------------- start ----------------
