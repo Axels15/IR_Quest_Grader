@@ -288,6 +288,32 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
     </div>
 
     <div class="card span2">
+      <div class="card-head"><h2>Post to Google Classroom</h2><span id="crStatus" class="hint"></span></div>
+      <p class="hint">Creates the assignment in each period's Classroom class, using the title, points, and that period's quest from above. It goes through the same Rubric Mailer script as Email rubrics (Export and email tab), so connect that first.</p>
+      <p id="crConn" class="hint" style="margin-top:6px"></p>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="btnCrLoad">Load my classes</button>
+        <div><label class="f" for="crDue">Due date (optional)</label><input type="date" id="crDue"></div>
+        <div><label class="f" for="crTime">Due time</label><input type="time" id="crTime"></div>
+        <label class="row" style="align-self:flex-end;padding-bottom:8px"><input type="checkbox" id="crDraft"> Save as a draft (assign it from Classroom)</label>
+      </div>
+      <label class="f" for="crNote">Extra directions for every class (optional)</label>
+      <textarea id="crNote" rows="2" placeholder="Turn in a photo or a doc of your work."></textarea>
+      <div style="overflow-x:auto;margin-top:10px"><table class="mail-table" id="crTable"></table></div>
+      <div class="row" style="margin-top:10px"><span style="margin-left:auto"></span><button class="btn primary" id="btnCrPost">Post to checked classes</button></div>
+      <details style="margin-top:12px"><summary>Turn on Classroom in your mailer script (one time)</summary>
+        <ol class="hint" style="padding-left:18px">
+          <li>Open your Rubric Mailer project at script.google.com. Copy the script below and paste it over the old code, then change the SECRET line back to your same secret phrase. Click Save.</li>
+          <li>Click + next to Services, pick Google Classroom API, and click Add.</li>
+          <li>In the function menu at the top, pick setupClassroom and click Run. Approve the Classroom permissions when Google asks.</li>
+          <li>Deploy, then Manage deployments. Click the pencil, set Version to New version, and click Deploy. The web app URL stays the same.</li>
+        </ol>
+        <p class="hint">Email keeps working, and the rubric grader can use this same script. If your district blocks the Classroom permissions, remove Google Classroom API from Services and deploy again, and email goes back to how it was.</p>
+        <button class="btn small" id="btnCopyScript2" style="margin-top:6px">Copy script</button>
+      </details>
+    </div>
+
+    <div class="card span2">
       <div class="card-head"><h2>Grading level and glows/grows</h2></div>
       <p class="hint">Grading level tells Claude to grade more leniently or more strictly. Glows/grows are short bullet points (what's there, what's missing) that print on the student's rubric PDF below the rubric when turned on. A student's own setting (on their row in the Review tab) beats their class, and a class beats Everyone.</p>
       <div class="rubric-wrap" style="margin-top:10px"><table class="adj-table" id="adjTable"></table></div>
@@ -438,6 +464,7 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
           <li>Delete the starter code, paste the script below, and change the SECRET line to a long random phrase of your own. Click Save.</li>
           <li>Deploy, then New deployment, then Web app. Set Execute as: Me and Who has access: Anyone. Authorize when asked.</li>
           <li>Copy the Web app URL (it ends in /exec) into the box above, put your secret phrase in the key box, and click Check connection.</li>
+          <li>To post assignments to Google Classroom too, follow the steps under Post to Google Classroom on the Set up tab.</li>
         </ol>
         <pre class="code" id="mailerScript"></pre>
         <button class="btn small" id="btnCopyScript">Copy script</button>
@@ -589,6 +616,7 @@ function freshState() {
     results: {},         // studentKey -> result
     sent: {},            // assignmentId -> {studentKey: iso}
     mail: { ...DEFAULT_MAIL },
+    classroom: { courses: [], map: {}, posted: {}, due: '', time: '23:59', draft: true, note: '' }, // map: period -> courseId; posted: assignmentId -> {period: {id, link, state, at}}
     usage: { input: 0, output: 0, calls: 0 },
     adjust: { level: { all: 0, p: {}, s: {} }, gg: { all: false, p: {}, s: {} } },
     ui: { tab: 'setup', period: null, filter: 'all', upPeriod: 'auto' }
@@ -609,7 +637,7 @@ function mergeState(s) {
     if (q) t.text = q.text;
   }
   return { ...base, ...s, settings: { ...base.settings, ...s.settings }, assignment: { ...base.assignment, ...s.assignment },
-    mail: { ...base.mail, ...s.mail }, usage: { ...base.usage, ...s.usage }, ui: { ...base.ui, ...s.ui } };
+    mail: { ...base.mail, ...s.mail }, classroom: { ...base.classroom, ...s.classroom }, usage: { ...base.usage, ...s.usage }, ui: { ...base.ui, ...s.ui } };
 }
 function loadState() {
   try {
@@ -1441,7 +1469,7 @@ function renderSetup() {
   $('#apiKey').value = S.settings.apiKey; $('#model').value = S.settings.model; $('#customModel').value = S.settings.customModel;
   $('#customModelWrap').classList.toggle('hidden', S.settings.model !== 'custom');
   $('#parallel').value = S.settings.parallel;
-  renderConv(); renderRoster(); renderRubric(); renderTasks(); renderAdjust(); renderUsage();
+  renderConv(); renderRoster(); renderRubric(); renderTasks(); renderAdjust(); renderUsage(); renderClassroom();
 }
 function renderAdjust() {
   const a = S.adjust;
@@ -1891,8 +1919,10 @@ function doPost(e) {
     }
     const me = Session.getEffectiveUser().getEmail();
     if (req.action === 'ping') {
-      return reply_({ ok: true, me: me, remaining: MailApp.getRemainingDailyQuota() });
+      return reply_({ ok: true, me: me, remaining: MailApp.getRemainingDailyQuota(), version: 2, classroom: typeof Classroom !== 'undefined' });
     }
+    if (req.action === 'courses') return reply_({ ok: true, courses: listCourses_() });
+    if (req.action === 'post') return reply_(postAssignment_(req));
     const to = req.action === 'test' ? me : String(req.to || '').trim();
     if (!to) return reply_({ ok: false, error: 'No email address for this student.' });
     if (!req.pdfBase64) return reply_({ ok: false, error: 'No PDF was attached.' });
@@ -1908,6 +1938,48 @@ function doPost(e) {
 
 function doGet() {
   return reply_({ ok: true, message: 'Rubric Mailer is running.' });
+}
+
+// ---- Google Classroom (optional) ----
+// To post assignments: click + next to Services, add Google Classroom API,
+// pick setupClassroom in the menu above and click Run, then deploy a new version.
+function setupClassroom() {
+  Logger.log('Classroom is connected. Found ' + listCourses_().length + ' active classes.');
+}
+
+function needClassroom_() {
+  if (typeof Classroom === 'undefined') {
+    throw new Error('The Google Classroom API is not turned on in the mailer script. Click + next to Services, add Google Classroom API, then deploy a new version.');
+  }
+}
+
+function listCourses_() {
+  needClassroom_();
+  const out = [];
+  let token = '';
+  do {
+    const opts = { teacherId: 'me', courseStates: ['ACTIVE'], pageSize: 100 };
+    if (token) opts.pageToken = token;
+    const r = Classroom.Courses.list(opts);
+    (r.courses || []).forEach(function (c) { out.push({ id: c.id, name: c.name, section: c.section || '' }); });
+    token = r.nextPageToken || '';
+  } while (token);
+  return out;
+}
+
+function postAssignment_(req) {
+  needClassroom_();
+  if (!req.courseId) return { ok: false, error: 'No class was picked.' };
+  const work = {
+    title: req.title || 'Assignment',
+    description: req.description || '',
+    workType: 'ASSIGNMENT',
+    state: req.draft ? 'DRAFT' : 'PUBLISHED'
+  };
+  if (req.maxPoints) work.maxPoints = Number(req.maxPoints);
+  if (req.dueDate && req.dueTime) { work.dueDate = req.dueDate; work.dueTime = req.dueTime; }
+  const cw = Classroom.Courses.CourseWork.create(work, req.courseId);
+  return { ok: true, id: cw.id, link: cw.alternateLink, state: cw.state };
 }
 
 function reply_(obj) {
@@ -1993,6 +2065,99 @@ async function sendMail(test) {
     if (!test) { const bad = list.filter(s => MAIL.status[s.key] && !MAIL.status[s.key].ok).length; toast(bad ? `${list.length - bad} sent, ${bad} failed. Failed ones stay checked.` : `Sent ${list.length} rubrics.`); }
   }
 }
+// ---------------- google classroom ----------------
+const CR = { status: {}, checked: new Set(), touched: false, busy: false };
+const OLD_SCRIPT_MSG = 'Your mailer script is the older version without Classroom. Update it with the steps under "Turn on Classroom" below.';
+function crError(msg) { return /No email address|No PDF was attached/.test(msg) ? OLD_SCRIPT_MSG : msg; }
+function crPosted() { const id = assignmentId(); return (S.classroom.posted[id] = S.classroom.posted[id] || {}); }
+// "Period 5", "P5", "Per. 5", or "5th" in a class name or section
+function crGuessPeriod(c) {
+  const s = `${c.name} ${c.section}`;
+  const m = periodFrom(s) ?? (s.match(/\b(?:p|per|pd)\.?\s*0?(\d{1,2})\b/i) || s.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/i) || [])[1];
+  return m != null ? Number(m) : null;
+}
+function crDescription(p) {
+  const ts = (S.tasks[p] || []).filter(t => (t.text || t.name || '').trim());
+  const quest = !ts.length ? '' : ts.length === 1 ? `${ts[0].name ? ts[0].name + ': ' : ''}${ts[0].text}`
+    : 'Choose one:\n' + ts.map((t, i) => `${i + 1}. ${t.name ? t.name + ': ' : ''}${t.text}`).join('\n');
+  return [quest, (S.classroom.note || '').trim()].filter(Boolean).join('\n\n');
+}
+// Classroom stores due dates in UTC
+function crDue() {
+  const c = S.classroom; if (!c.due) return {};
+  const d = new Date(`${c.due}T${c.time || '23:59'}`);
+  if (isNaN(d)) return {};
+  return { dueDate: { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() }, dueTime: { hours: d.getUTCHours(), minutes: d.getUTCMinutes() } };
+}
+function renderClassroom() {
+  const c = S.classroom, ps = periods(), posted = crPosted();
+  $('#crDue').value = c.due; $('#crTime').value = c.time; $('#crDraft').checked = c.draft; $('#crNote').value = c.note;
+  $('#crConn').innerHTML = S.mail.url ? '' : '<span class="chip flag">Not connected</span> Paste the connection code under Email rubrics on the Export and email tab first.';
+  if (!CR.touched) CR.checked = new Set(ps.filter(p => c.map[p] && !posted[p]));
+  if (!ps.length) { $('#crTable').innerHTML = '<tr><td class="hint">Upload a roster and each period will show up here.</td></tr>'; return; }
+  const opts = cur => (c.courses.length ? '<option value="">Pick a class...</option>' : '<option value="">Load your classes first</option>') +
+    c.courses.map(k => `<option value="${esc(k.id)}" ${k.id === cur ? 'selected' : ''}>${esc(k.name)}${k.section ? ' (' + esc(k.section) + ')' : ''}</option>`).join('');
+  $('#crTable').innerHTML = '<tr><th></th><th>Period</th><th>Classroom class</th><th>Quest</th><th>Status</th></tr>' + ps.map(p => {
+    const names = (S.tasks[p] || []).filter(t => (t.text || t.name || '').trim()).map(t => t.name || 'Untitled quest');
+    const st = CR.status[p], done = posted[p];
+    const status = st ? (st.busy ? '<span class="chip info">Posting...</span>' : `<span class="chip bad">${esc(st.msg)}</span>`)
+      : done ? `<span class="chip ok">${done.state === 'DRAFT' ? 'Draft saved' : 'Posted'} ${new Date(done.at).toLocaleDateString()}</span>${done.link ? ` <a href="${esc(done.link)}" target="_blank" rel="noopener">Open</a>` : ''}` : '';
+    return `<tr><td><input type="checkbox" data-crpick="${p}" ${CR.checked.has(p) ? 'checked' : ''} ${c.map[p] ? '' : 'disabled'} aria-label="Post to Period ${p}"></td>
+      <td>Period ${p}</td><td><select data-crcourse="${p}" style="width:auto;max-width:320px">${opts(c.map[p] || '')}</select></td>
+      <td>${names.length ? esc(names.join(' or ')) : '<span class="chip flag">No quest entered</span>'}</td><td>${status}</td></tr>`;
+  }).join('');
+}
+async function loadCourses() {
+  if (!S.mail.url) { toast('Connect the mailer on the Export and email tab first.'); return; }
+  $('#crStatus').innerHTML = '<span class="chip info">Loading classes...</span>';
+  try {
+    const r = await mailPost({ action: 'courses' });
+    if (!Array.isArray(r.courses)) throw new Error(OLD_SCRIPT_MSG);
+    const c = S.classroom;
+    c.courses = r.courses.sort((a, b) => natCmp(a.name + ' ' + a.section, b.name + ' ' + b.section));
+    for (const p of periods()) {
+      if (c.map[p] && c.courses.some(k => k.id === c.map[p])) continue;
+      const hit = c.courses.filter(k => crGuessPeriod(k) === p);
+      if (hit.length === 1) c.map[p] = hit[0].id; else delete c.map[p];
+    }
+    save(); CR.touched = false;
+    $('#crStatus').innerHTML = `<span class="chip ok">Found ${c.courses.length} active class${c.courses.length === 1 ? '' : 'es'}</span>`;
+  } catch (e) { $('#crStatus').innerHTML = `<span class="chip bad">${esc(crError(e.message))}</span>`; }
+  renderClassroom();
+}
+async function postClassroom() {
+  if (CR.busy) return;
+  if (!S.mail.url) { toast('Connect the mailer on the Export and email tab first.'); return; }
+  const c = S.classroom, posted = crPosted();
+  const list = periods().filter(p => CR.checked.has(p) && c.map[p]);
+  if (!list.length) { toast('Check at least one period that has a class picked.'); return; }
+  const empty = list.filter(p => !crDescription(p));
+  const again = list.filter(p => posted[p]);
+  const what = c.draft ? 'Save a draft of' : 'Post and assign';
+  if (!confirm(`${what} "${S.assignment.title}" in ${list.map(p => 'Period ' + p).join(', ')}?` +
+    (empty.length ? `\n\nPeriod ${empty.join(', ')} has no quest text, so the assignment will have no directions.` : '') +
+    (again.length ? `\n\nAlready posted for Period ${again.join(', ')}. This makes a second copy.` : ''))) return;
+  CR.busy = true; $('#btnCrPost').disabled = true;
+  let ok = 0;
+  try {
+    for (const p of list) {
+      CR.status[p] = { busy: true }; renderClassroom();
+      try {
+        const r = await mailPost({ action: 'post', courseId: c.map[p], title: S.assignment.title, description: crDescription(p),
+          maxPoints: Number(S.assignment.points) || 100, draft: !!c.draft, ...crDue() });
+        if (!r.id) throw new Error(OLD_SCRIPT_MSG);
+        posted[p] = { id: r.id, link: r.link || '', state: r.state || (c.draft ? 'DRAFT' : 'PUBLISHED'), at: new Date().toISOString() };
+        delete CR.status[p]; CR.checked.delete(p); ok++; save();
+      } catch (e) { CR.status[p] = { msg: crError(e.message) }; }
+      renderClassroom();
+    }
+  } finally {
+    CR.busy = false; $('#btnCrPost').disabled = false; renderClassroom();
+    const bad = list.length - ok;
+    toast(bad ? `${ok} posted, ${bad} failed. See the Status column.` : `${c.draft ? 'Saved drafts in' : 'Posted to'} ${ok} class${ok === 1 ? '' : 'es'}.`);
+  }
+}
+
 function saveMailFields() {
   S.mail.fromName = $('#mailFrom').value; S.mail.subject = $('#mailSubject').value; S.mail.body = $('#mailBody').value; save();
 }
@@ -2005,7 +2170,7 @@ function wire() {
   bindA('#aTitle', 'title'); bindA('#aDate', 'date'); bindA('#aPoints', 'points', true); bindA('#aMin', 'minPass', true);
   $('#btnNewAssign').addEventListener('click', () => {
     if (!confirm('Start a new assignment? This clears the grades, notes, and uploaded files for the current one. Your roster, rubric, quests, and settings stay. Back up first if you want to keep these grades.')) return;
-    S.results = {}; RT.docs = []; RT.parts = []; RT.hashes.clear(); RT.open = null;
+    S.results = {}; RT.docs = []; RT.parts = []; RT.hashes.clear(); RT.open = null; CR.touched = false; CR.status = {};
     const m = String(S.assignment.title).match(/^(.*?)(\d+)\s*$/);
     if (m) S.assignment.title = m[1] + (Number(m[2]) + 1);
     S.assignment.date = todayISO();
@@ -2066,6 +2231,26 @@ function wire() {
     if (add) { const p = Number(add.dataset.tadd); S.tasks[p] = S.tasks[p] && S.tasks[p].length ? S.tasks[p] : [{ name: '', text: '' }]; S.tasks[p].push({ name: '', text: '' }); save(); renderTasks(); }
     if (del) { const [p, i] = del.dataset.tdel.split('_').map(Number); S.tasks[p].splice(i, 1); save(); renderTasks(); }
   });
+  $('#taskList').addEventListener('change', renderClassroom);
+  $('#taskList').addEventListener('click', e => { if (e.target.closest('[data-tadd],[data-tdel]')) renderClassroom(); });
+  // google classroom
+  $('#btnCrLoad').addEventListener('click', loadCourses);
+  $('#btnCrPost').addEventListener('click', postClassroom);
+  $('#crDue').addEventListener('change', e => { S.classroom.due = e.target.value; save(); });
+  $('#crTime').addEventListener('change', e => { S.classroom.time = e.target.value || '23:59'; save(); });
+  $('#crDraft').addEventListener('change', e => { S.classroom.draft = e.target.checked; save(); });
+  $('#crNote').addEventListener('input', e => { S.classroom.note = e.target.value; save(); });
+  $('#crTable').addEventListener('change', e => {
+    const t = e.target;
+    if (t.dataset.crcourse) {
+      const p = t.dataset.crcourse;
+      if (t.value) S.classroom.map[p] = t.value; else delete S.classroom.map[p];
+      CR.touched = true; t.value ? CR.checked.add(Number(p)) : CR.checked.delete(Number(p));
+      save(); renderClassroom();
+    }
+    if (t.dataset.crpick) { CR.touched = true; t.checked ? CR.checked.add(Number(t.dataset.crpick)) : CR.checked.delete(Number(t.dataset.crpick)); }
+  });
+  $('#btnCopyScript2').addEventListener('click', async () => { try { await navigator.clipboard.writeText(MAILER_SCRIPT); toast('Script copied.'); } catch (e) { toast('Open the Export and email tab and copy the script from there.'); } });
   // guidance + claude
   $('#guidance').addEventListener('input', e => { S.guidance = e.target.value; save(); });
   $('#offTask').addEventListener('change', e => { S.offTask = e.target.value; save(); });
@@ -2220,7 +2405,7 @@ function wire() {
   $('#btnPing').addEventListener('click', async () => {
     if (!readMailCode()) return;
     $('#mailStatus').textContent = 'Checking...';
-    try { const r = await mailPost({ action: 'ping' }); $('#mailStatus').innerHTML = `<span class="chip ok">Connected. Sending as ${esc(r.me)}, ${r.remaining} emails left today</span>`; }
+    try { const r = await mailPost({ action: 'ping' }); $('#mailStatus').innerHTML = `<span class="chip ok">Connected. Sending as ${esc(r.me)}, ${r.remaining} emails left today${r.classroom ? '. Classroom is on' : ''}</span>`; }
     catch (e) { $('#mailStatus').innerHTML = `<span class="chip bad">${esc(e.message)}</span>`; }
   });
   $('#mailTable').addEventListener('change', e => { const k = e.target.dataset.mail; if (!k) return; MAIL.touched = true; e.target.checked ? MAIL.checked.add(k) : MAIL.checked.delete(k); renderMailTable(); });
