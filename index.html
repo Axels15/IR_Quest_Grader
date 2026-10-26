@@ -314,8 +314,8 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
     </div>
 
     <div class="card span2">
-      <div class="card-head"><h2>Grading level and glows/grows</h2></div>
-      <p class="hint">Grading level tells Claude to grade more leniently or more strictly. Glows/grows are short bullet points (what's there, what's missing) that print on the student's rubric PDF below the rubric when turned on. A student's own setting (on their row in the Review tab) beats their class, and a class beats Everyone.</p>
+      <div class="card-head"><h2>Grading level and what prints on the PDF</h2></div>
+      <p class="hint">Grading level tells Claude to grade more leniently or more strictly. Glows/grows are short bullet points (what's there, what's missing) that print below the rubric. The comment is the note to the student. Each one prints only when turned on. A student's own setting (on their row in the Review tab) beats their class, and a class beats Everyone.</p>
       <div class="rubric-wrap" style="margin-top:10px"><table class="adj-table" id="adjTable"></table></div>
       <p class="hint" style="margin-top:8px">Changing a grading level doesn't change grades that are already done. The Review tab shows who's affected and lets you grade them again.</p>
     </div>
@@ -415,9 +415,8 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
     <div class="card">
       <div class="card-head"><h2>Student rubrics</h2></div>
       <p class="hint">A one-page PDF per graded student with the highlighted rubric, row scores, total, and grade.</p>
-      <label class="row" style="margin-top:10px"><input type="checkbox" id="pdfComments" checked> Include the comment to the student</label>
-      <label class="row" style="margin-top:6px"><input type="checkbox" id="pdfBook" checked> Show the book title</label>
-      <p class="hint" style="margin-top:6px">Glows/grows print below the rubric for students who have them turned on (Set up tab, or a student's row on the Review tab).</p>
+      <label class="row" style="margin-top:10px"><input type="checkbox" id="pdfBook" checked> Show the book title</label>
+      <p class="hint" style="margin-top:6px">Glows/grows and the comment each print for students who have them turned on. Set them for everyone or a class on the Set up tab, or for one student on their row in the Review tab.</p>
       <div id="pdfButtons" class="row" style="margin-top:10px"></div>
     </div>
     <div class="card">
@@ -605,7 +604,7 @@ function todayISO() {
 }
 function freshState() {
   return {
-    v: 1,
+    v: 2,
     settings: { apiKey: '', model: 'claude-sonnet-5-5', customModel: '', parallel: 3 },
     assignment: { title: 'IR Quest', date: todayISO(), points: 100, minPass: 65 },
     rubric: JSON.parse(JSON.stringify(DEFAULT_RUBRIC)),
@@ -618,7 +617,7 @@ function freshState() {
     mail: { ...DEFAULT_MAIL },
     classroom: { courses: [], map: {}, posted: {}, due: '', time: '23:59', draft: true, note: '' }, // map: period -> courseId; posted: assignmentId -> {period: {id, link, state, at}}
     usage: { input: 0, output: 0, calls: 0 },
-    adjust: { level: { all: 0, p: {}, s: {} }, gg: { all: false, p: {}, s: {} } },
+    adjust: { level: { all: 0, p: {}, s: {} }, gg: { all: true, p: {}, s: {} }, cm: { all: false, p: {}, s: {} } }, // cm: comment on the PDF
     ui: { tab: 'setup', period: null, filter: 'all', upPeriod: 'auto' }
   };
 }
@@ -629,7 +628,9 @@ function mergeState(s) {
   const base = freshState();
   if (s.guidance === OLD_GUIDANCE_V1) s.guidance = DEFAULT_GUIDANCE;
   if (s.rubric && JSON.stringify(s.rubric) === JSON.stringify(OLD_RUBRIC_V1)) s.rubric = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
-  if (s.adjust) s.adjust = { level: { ...base.adjust.level, ...s.adjust.level }, gg: { ...base.adjust.gg, ...s.adjust.gg } };
+  // v2: glows/grows print by default (comments now have their own setting, off by default)
+  if ((s.v || 1) < 2) { if (s.adjust && s.adjust.gg) s.adjust.gg.all = true; s.v = base.v; }
+  if (s.adjust) s.adjust = { level: { ...base.adjust.level, ...s.adjust.level }, gg: { ...base.adjust.gg, ...s.adjust.gg }, cm: { ...base.adjust.cm, ...s.adjust.cm } };
   // quests picked before the explanation paragraph was added get the new card text
   for (const ts of Object.values(s.tasks || {})) for (const t of ts || []) {
     const old = t.text === OLD_EMOJI_TEXT ? 'Pick five emojis for a chapter that reflect the main mood/tone.' : t.text;
@@ -741,6 +742,7 @@ function adjPick(kind, key) {
 function adjPeriod(kind, p) { const a = S.adjust[kind]; return setVal(a.p[p]) ? a.p[p] : a.all; }
 function levelOf(key) { return Number(adjPick('level', key)) || 0; }
 function ggOn(key) { return !!adjPick('gg', key); }
+function cmOn(key) { return !!adjPick('cm', key); }
 function levelChanged(key) {
   const r = S.results[key];
   return !!(r && r.gradedAt && rowState(key) === 'graded' && (Number(r.level) || 0) !== levelOf(key));
@@ -901,8 +903,10 @@ async function pdfPages(buf) {
     page.cleanup();
   }
   const more = pdf.numPages > n ? pdf.numPages - n : 0;
+  let author = '';
+  try { author = String(((await pdf.getMetadata()).info || {}).Author || '').trim(); } catch (e) {}
   pdf.destroy();
-  return { pages, more };
+  return { pages, more, author };
 }
 function xmlText(xml, paraTag, textTag) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
@@ -998,8 +1002,8 @@ async function ingestBlob(name, blob, ctx, report) {
       return;
     }
     if (ext === 'pdf') {
-      const { pages, more } = await pdfPages(buf);
-      const d = addDoc({ ...base, kind: 'pdf', pages });
+      const { pages, more, author } = await pdfPages(buf);
+      const d = addDoc({ ...base, kind: 'pdf', pages, author });
       if (more) d.note = `Only the first ${MAX_PDF_PAGES} pages were read (${more} more in the file).`;
       return;
     }
@@ -1055,6 +1059,11 @@ function matchDoc(d) {
   if (head) {
     let t = matchText(head, d.period, 9) || matchText(head, null, 10);
     if (t && !t.multi) return { ...t, how: 'name in the document' };
+  }
+  // Canva and similar apps save the student's account name as the PDF's author
+  if (d.author) {
+    const a = matchText(d.author, d.period, 9) || matchText(d.author, null, 10);
+    if (a && !a.multi) return { ...a, how: 'author saved in the PDF' };
   }
   return null;
 }
@@ -1215,7 +1224,7 @@ async function splitDoc(d) {
     }
   }
   if (d.text) content.push({ type: 'text', text: `Text from the file:\n${d.text.slice(0, 6000)}` });
-  content.push({ type: 'text', text: `File name: ${d.name}\nSort these ${pages.length || 1} page(s).` });
+  content.push({ type: 'text', text: `File name: ${d.name}${d.author ? `\nAuthor saved in the file (often the student's account name, but could be whoever made the template): ${d.author}` : ''}\nSort these ${pages.length || 1} page(s).` });
   const system = `You sort student work for a 7th grade teacher before it is graded. The assignment is "${S.assignment.title}", a creative response to the student's independent reading book.
 
 You will see the numbered pages of one uploaded file. It may hold one student's work or a stack of scans from many students in a row. Group the pages into one segment per student and identify each student from the roster below.
@@ -1300,8 +1309,8 @@ function gradeTool() {
         },
         teacher_note: { type: 'string' },
         student_comment: { type: 'string' },
-        glows: { type: 'array', maxItems: 3, items: { type: 'string' }, description: 'Short bullet fragments naming what is there. Not conversational.' },
-        grows: { type: 'array', maxItems: 3, items: { type: 'string' }, description: 'Short bullet fragments naming what is missing or thin. Not conversational.' }
+        glows: { type: 'array', maxItems: 3, items: { type: 'string' }, description: 'Generic checklist bullets naming which parts of the quest are there, like "Profile sketch included". Nothing specific to this student\'s work.' },
+        grows: { type: 'array', maxItems: 3, items: { type: 'string' }, description: 'Generic checklist bullets naming which parts of the quest are missing or thin, like "Internal dialogue missing". Nothing specific to this student\'s work.' }
       },
       required: ['book_title', 'task_done', 'on_task', 'is_blank', 'scores', 'reading_evidence', 'flags', 'teacher_note', 'student_comment', 'glows', 'grows']
     }
@@ -1344,7 +1353,7 @@ RULES
 - Flags are for the teacher only. Flag possible AI use or copied text, a different quest, missing parts, spoilers when the quest says to avoid them, anything the teacher should look at for the student's wellbeing or school-appropriateness, a name on the work that doesn't match the student, or two different versions of the same work. Explain each flag in one sentence. Still score the work as written.
 - teacher_note: two or three plain sentences for Mr. Axelson using the student's first name: what they made, what shows they read, and anything to check.
 - student_comment: two or three sentences written by Mr. Axelson to the student, in first person, starting with the student's first name. Name one specific thing in their work that is genuinely good, then one concrete thing to push on next time. Warm and honest, no humor, no exclamation-only praise like "Great job!", and never mention AI, flags, or the grade. If the work is blank, off-task, or too thin to praise honestly, write a calm note naming what was missing and inviting them to check in with you, with no invented praise.
-- glows and grows: short bullet points that go on the student's rubric. They are not conversational. No names, no "you" or "I", no praise words like great or awesome, no exclamation points, and never mention AI, flags, or the grade. Each one is a plain fragment of about 3 to 10 words tied to a rubric row or a requirement of the quest, and they must match the scores. Prefer generic wording. Glows name what is there, like "All five emojis included", "Specific events from the book", "Clear reason for each choice". Grows name what is missing or thin, like "Explanation for emoji 4 is missing", "Not enough detail to show reading", "Paragraphs shorter than the 3-4 sentences asked". Give 1 to 3 of each. If nothing is honestly strong, leave glows empty. If the work is blank, glows is empty and grows is ["No work submitted"].`;
+- glows and grows: short checklist bullets that go on the student's rubric. Write them like items on a checklist for the quest, so the same bullet could fit any student who did (or missed) that part. Never mention anything specific to this student's work: no character names, book title, events, places, teams, songs, quotes, or details they chose. No student names, no "you" or "I", no praise words like great or awesome, no exclamation points, and never mention AI, flags, or the grade. Each one is a plain fragment of about 2 to 8 words tied to a requirement of the quest or a rubric row, and they must match the scores. Glows name the parts that are there, like "Profile sketch included", "List of traits included", "Explained choices", "Specific details from the book", "All five emojis included". Grows name the parts that are missing or thin, like "Internal dialogue missing", "Static or dynamic explanation missing", "Explanation of choices missing", "More details from the book needed". Give 1 to 3 of each. If nothing is honestly strong, leave glows empty. If the work is blank, glows is empty and grows is ["No work submitted"].`;
 }
 async function gradeStudent(key) {
   const s = stu(key); if (!s) return;
@@ -1477,11 +1486,13 @@ function renderAdjust() {
     .concat(LEVELS.map(l => `<option value="${l.v}" ${setVal(cur) && Number(cur) === l.v ? 'selected' : ''}>${esc(l.name)}</option>`)).join('');
   const ggOpts = (cur, inherit) => (inherit != null ? [`<option value="" ${!setVal(cur) ? 'selected' : ''}>Same as everyone (${inherit ? 'On' : 'Off'})</option>`] : [])
     .concat([`<option value="1" ${setVal(cur) && cur ? 'selected' : ''}>On</option>`, `<option value="0" ${setVal(cur) && !cur ? 'selected' : ''}>Off</option>`]).join('');
-  let h = `<thead><tr><th>Who</th><th>Grading level</th><th>Glows/grows on PDF</th><th></th></tr></thead><tbody>
-    <tr><td><b>Everyone</b></td><td><select data-alevel="all">${lvOpts(a.level.all, null)}</select></td><td><select data-agg="all">${ggOpts(a.gg.all, null)}</select></td><td></td></tr>`;
+  let h = `<thead><tr><th>Who</th><th>Grading level</th><th>Glows/grows on PDF</th><th>Comment on PDF</th><th></th></tr></thead><tbody>
+    <tr><td><b>Everyone</b></td><td><select data-alevel="all">${lvOpts(a.level.all, null)}</select></td><td><select data-agg="all">${ggOpts(a.gg.all, null)}</select></td>
+      <td><select data-acm="all">${ggOpts(a.cm.all, null)}</select></td><td></td></tr>`;
   for (const p of periods()) {
-    const ind = studentsIn(p).filter(st => setVal(a.level.s[st.key]) || setVal(a.gg.s[st.key])).length;
+    const ind = studentsIn(p).filter(st => setVal(a.level.s[st.key]) || setVal(a.gg.s[st.key]) || setVal(a.cm.s[st.key])).length;
     h += `<tr><td>Period ${p}</td><td><select data-alevel="${p}">${lvOpts(a.level.p[p], a.level.all)}</select></td><td><select data-agg="${p}">${ggOpts(a.gg.p[p], a.gg.all)}</select></td>
+      <td><select data-acm="${p}">${ggOpts(a.cm.p[p], a.cm.all)}</select></td>
       <td class="hint">${ind ? `${ind} student${ind > 1 ? 's' : ''} set individually` : ''}</td></tr>`;
   }
   $('#adjTable').innerHTML = h + '</tbody>';
@@ -1696,7 +1707,7 @@ function detailHtml(s) {
       ${(r.flags || []).length ? `<div style="margin-top:8px">${r.flags.map((f, i) => `<div class="row" style="margin-top:4px"><span class="chip flag">${esc(FLAG_TYPES[f.type] || f.type)}</span><span style="flex:1">${esc(f.note)}</span><button class="linkbtn" data-unflag="${esc(s.key)}" data-i="${i}">Dismiss</button></div>`).join('')}</div>` : ''}
       <label class="f">Note for you</label>
       <textarea data-field="teacherNote" data-key="${esc(s.key)}" rows="3">${esc(r.teacherNote || '')}</textarea>
-      <label class="f">Comment to ${esc(s.first)} (goes on the PDF)</label>
+      <label class="f">Comment to ${esc(s.first)} <span class="hint">${cmOn(s.key) ? '(prints on the PDF)' : '(off for this student, won\'t print)'}</span></label>
       <textarea data-field="comment" data-key="${esc(s.key)}" rows="3">${esc(r.comment || '')}</textarea>
       <div class="row" style="margin-top:4px;align-items:flex-start">
         <div class="grow"><label class="f">Glows (one per line)</label><textarea data-list="glows" data-key="${esc(s.key)}" rows="3">${esc((r.glows || []).join('\n'))}</textarea></div>
@@ -1707,13 +1718,16 @@ function detailHtml(s) {
     </div></div>`;
 }
 function adjustHtml(s, r) {
-  const a = S.adjust, pl = adjPeriod('level', s.period), pg = adjPeriod('gg', s.period);
-  const cl = a.level.s[s.key], cg = a.gg.s[s.key];
+  const a = S.adjust, pl = adjPeriod('level', s.period);
+  const cl = a.level.s[s.key];
   const lv = `<option value="" ${!setVal(cl) ? 'selected' : ''}>Same as class (${esc(levelName(pl))})</option>` + LEVELS.map(l => `<option value="${l.v}" ${setVal(cl) && Number(cl) === l.v ? 'selected' : ''}>${esc(l.name)}</option>`).join('');
-  const gg = `<option value="" ${!setVal(cg) ? 'selected' : ''}>Same as class (${pg ? 'On' : 'Off'})</option><option value="1" ${setVal(cg) && cg ? 'selected' : ''}>On</option><option value="0" ${setVal(cg) && !cg ? 'selected' : ''}>Off</option>`;
+  const onOff = kind => {
+    const cur = a[kind].s[s.key], inh = adjPeriod(kind, s.period);
+    return `<option value="" ${!setVal(cur) ? 'selected' : ''}>Same as class (${inh ? 'On' : 'Off'})</option><option value="1" ${setVal(cur) && cur ? 'selected' : ''}>On</option><option value="0" ${setVal(cur) && !cur ? 'selected' : ''}>Off</option>`;
+  };
   let note = '';
   if (levelChanged(s.key)) note = `<p class="hint" style="color:var(--red);margin:-4px 0 10px">Graded at ${esc(levelName(r.level || 0))}. ${workParts(s.key).length ? 'Use Grade again to apply the new level.' : 'Re-upload their work, then use Grade again to apply the new level.'}</p>`;
-  return `<div class="adj-row"><label>Grading level<select data-slevel="${esc(s.key)}">${lv}</select></label><label>Glows/grows on PDF<select data-sgg="${esc(s.key)}">${gg}</select></label></div>${note}`;
+  return `<div class="adj-row"><label>Grading level<select data-slevel="${esc(s.key)}">${lv}</select></label><label>Glows/grows on PDF<select data-sgg="${esc(s.key)}">${onOff('gg')}</select></label><label>Comment on PDF<select data-scm="${esc(s.key)}">${onOff('cm')}</select></label></div>${note}`;
 }
 function renderTray() {
   const un = unassignedParts();
@@ -1850,7 +1864,7 @@ function buildPdf(s) {
     });
     y += bh;
   }
-  if ($('#pdfComments').checked && r.comment && r.comment.trim()) {
+  if (cmOn(s.key) && r.comment && r.comment.trim()) {
     y += 22;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(10.5);
     const cl = doc.splitTextToSize(pdfSafe(r.comment.trim()), W - 2 * M - 24);
@@ -2303,9 +2317,10 @@ function wire() {
       const v = t.value === '' ? null : Number(t.value);
       if (t.dataset.alevel === 'all') a.level.all = v ?? 0; else { if (v == null) delete a.level.p[t.dataset.alevel]; else a.level.p[t.dataset.alevel] = v; }
     }
-    if (t.dataset.agg != null) {
+    for (const [kind, who] of [['gg', t.dataset.agg], ['cm', t.dataset.acm]]) {
+      if (who == null) continue;
       const v = t.value === '' ? null : t.value === '1';
-      if (t.dataset.agg === 'all') a.gg.all = !!v; else { if (v == null) delete a.gg.p[t.dataset.agg]; else a.gg.p[t.dataset.agg] = v; }
+      if (who === 'all') a[kind].all = !!v; else { if (v == null) delete a[kind].p[who]; else a[kind].p[who] = v; }
     }
     save(); renderAdjust();
   });
@@ -2337,8 +2352,9 @@ function wire() {
       if (t.value === '') delete S.adjust.level.s[t.dataset.slevel]; else S.adjust.level.s[t.dataset.slevel] = Number(t.value);
       save(); renderReview(); return;
     }
-    if (t.dataset.sgg != null) {
-      if (t.value === '') delete S.adjust.gg.s[t.dataset.sgg]; else S.adjust.gg.s[t.dataset.sgg] = t.value === '1';
+    for (const [kind, key] of [['gg', t.dataset.sgg], ['cm', t.dataset.scm]]) {
+      if (key == null) continue;
+      if (t.value === '') delete S.adjust[kind].s[key]; else S.adjust[kind].s[key] = t.value === '1';
       save(); renderReview(); return;
     }
     if (t.dataset.move && t.value) {
