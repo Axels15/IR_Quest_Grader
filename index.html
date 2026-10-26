@@ -451,6 +451,7 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
         <div class="grow"><label class="f" for="mailCode">Connection code or web app URL</label><input type="text" id="mailCode" placeholder="RM1:... or https://script.google.com/.../exec"></div>
         <div class="grow"><label class="f" for="mailKey">Secret key (only if you pasted a URL)</label><input type="password" id="mailKey" autocomplete="off"></div>
         <button class="btn" id="btnPing" style="align-self:flex-end">Check connection</button>
+        <button class="btn" id="btnCopyCode" style="align-self:flex-end">Copy connection code</button>
       </div>
       <div class="row">
         <div class="grow"><label class="f" for="mailFrom">From name</label><input type="text" id="mailFrom"></div>
@@ -2308,6 +2309,11 @@ function renderMailTable() {
 async function sendMail(test) {
   if (MAIL.sending) return;
   if (!readMailCode()) return;
+  // each browser keeps its own connection: say so once instead of failing every student
+  if (!/\/exec(\?|$)/.test(S.mail.url) || !S.mail.key) {
+    toast("This browser isn't connected to your mailer yet. Paste the connection code (or web app URL and secret key) above, then tap Check connection.", 8000);
+    $('#mailCode').focus(); return;
+  }
   saveMailFields();
   const list = mailCandidates().filter(s => MAIL.checked.has(s.key) && mailable(s));
   if (!list.length) { toast(test ? 'Check at least one student to use as the test.' : 'Nobody is checked.'); return; }
@@ -2740,6 +2746,14 @@ function wire() {
   $('#mailTags').addEventListener('mousedown', e => { if (e.target.closest('[data-tag]')) e.preventDefault(); }); // keep the cursor in the text box
   $('#mailTags').addEventListener('click', e => { const b = e.target.closest('[data-tag]'); if (b) insertTag(b.dataset.tag); });
   $('#mailPeriod').addEventListener('change', () => { renderMailTable(); renderMailPreview(); });
+  // one code holding the URL and secret, to paste on another device (same RM1 format as the rubric grader)
+  $('#btnCopyCode').addEventListener('click', async () => {
+    if (!readMailCode()) return;
+    if (!S.mail.url || !S.mail.key) { toast('Connect this browser first: paste the web app URL and secret key.'); return; }
+    const code = 'RM1:' + btoa(JSON.stringify({ u: S.mail.url, k: S.mail.key }));
+    try { await navigator.clipboard.writeText(code); toast('Connection code copied. Paste it into this box on your other device.'); }
+    catch (e) { prompt('Copy this connection code:', code); }
+  });
   $('#btnPing').addEventListener('click', async () => {
     if (!readMailCode()) return;
     $('#mailStatus').textContent = 'Checking...';
