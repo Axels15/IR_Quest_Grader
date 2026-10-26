@@ -177,6 +177,8 @@ tr.detail > td { background: var(--desk); padding: 16px; }
 .detail-grid { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.3fr); gap: 16px; }
 @media (max-width: 800px) { .detail-grid { grid-template-columns: 1fr; } }
 .thumbs { display: flex; flex-wrap: wrap; gap: 6px; }
+.thumbs .pg { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: .8rem; }
+.thumbs .pg label { display: flex; gap: 4px; align-items: center; cursor: pointer; }
 .thumbs img { width: 92px; height: 120px; object-fit: cover; object-position: top; border: 1px solid var(--line-strong); border-radius: 4px; cursor: zoom-in; background: #fff; }
 .doctext { white-space: pre-wrap; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 10px; max-height: 260px; overflow: auto; font-size: .88rem; margin-top: 8px; }
 .kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: .9rem; }
@@ -1085,7 +1087,31 @@ function matchText(text, period, minScore) {
   if (scored.length > 1 && scored[0].score === scored[1].score) return null;
   return scored[0];
 }
+// Every student a file seems to belong to: each part of the file name split on "and", "&", or "+"
+// ("Gemma_and_Jack.pdf"), plus a full name written near the top of each page. More than one means
+// the file holds several students' work, so Claude sorts it instead of handing it all to one.
+function namesInDoc(d) {
+  const found = new Set();
+  let unknown = 0;
+  const bits = d.name.replace(/\.[a-z0-9]+$/i, '').replace(/[_]+/g, ' ').split(/\s+(?:and|&|\+)\s+|\s*[&+]\s*/i).filter(b => b.trim());
+  if (bits.length > 1) {
+    for (const b of bits) {
+      const m = matchText(b, d.period, 4) || (d.period != null ? matchText(b, null, 7) : null);
+      if (m && m.multi) m.multi.forEach(k => found.add(k));
+      else if (m) found.add(m.key);
+      else if (toks(b).some(t => S.roster.some(s => [s.first, ...(s.aliases || [])].some(f => toks(f)[0] === t)))) unknown++;  // a first name shared by several students
+    }
+  }
+  for (const p of d.pages) {
+    if (!p.text) continue;
+    const m = matchText(p.text.slice(0, 400), d.period, 9) || matchText(p.text.slice(0, 400), null, 10);
+    if (m && m.multi) m.multi.forEach(k => found.add(k)); else if (m) found.add(m.key);
+  }
+  return found.size + unknown > 1 ? Array.from(found) : null;
+}
 function matchDoc(d) {
+  const several = namesInDoc(d);
+  if (several) return { multi: several };
   const label = (d.container ? d.container + ' ' : '') + d.name.replace(/\.[a-z0-9]+$/i, '');
   let m = matchText(label, d.period, 4);
   if (m && m.multi) return m;
@@ -1131,6 +1157,42 @@ function partPages(p) {
   const d = RT.docs.find(x => x.id === p.docId); if (!d) return [];
   const idx = p.pages || d.pages.map((_, i) => i);
   return idx.map(i => ({ ...d.pages[i], doc: d, n: i + 1 })).filter(x => x.url);
+}
+// pages checked under a student's thumbnails, as {partId: [page index]}, or null when none are checked
+function checkedPages(root) {
+  const boxes = root ? $$('input[data-pg]:checked', root) : [];
+  if (!boxes.length) return null;
+  const out = {};
+  for (const b of boxes) { const [pid, i] = b.dataset.pg.split(':'); if (i === 'all') out[pid] = 'all'; else (out[pid] = out[pid] || []).push(Number(i)); }
+  return out;
+}
+// Give a student's work (all of it, or just the picked pages) to another student.
+// share keeps it with both (partner work); otherwise it moves. Returns pages (or pieces) given.
+function giveWork(from, to, picks, share) {
+  let given = 0;
+  for (const p of (share ? workParts(from) : partsFor(from))) {
+    const d = RT.docs.find(x => x.id === p.docId);
+    const all = p.pages || (d && d.pages.length ? d.pages.map((_, i) => i) : null);
+    if (picks && !picks[p.id]) continue;
+    const chosen = picks && picks[p.id] !== 'all' ? picks[p.id].filter(i => !all || all.includes(i)) : all;
+    if (picks && chosen && !chosen.length) continue;
+    const whole = !picks || !all || chosen.length === all.length;
+    if (!share && whole) { p.studentKey = to; p.source = 'you'; given += chosen ? chosen.length : 1; continue; }
+    const dupe = RT.parts.some(x => x.studentKey === to && x.docId === p.docId && !x.ignored && String(x.pages || all) === String(chosen));
+    if (!dupe) RT.parts.push({ ...p, id: uid(), studentKey: to, pages: chosen, source: share ? 'you (group work)' : 'you' });
+    if (!share) p.pages = all.filter(i => !chosen.includes(i));
+    given += chosen ? chosen.length : 1;
+  }
+  return given;
+}
+// other students given the same pages of the same file (partner or group work)
+function partnersOf(key) {
+  const mine = workParts(key), out = new Set();
+  for (const p of RT.parts) {
+    if (p.ignored || p.kind !== 'work' || !p.studentKey || p.studentKey === key) continue;
+    if (mine.some(m => m.docId === p.docId && (!m.pages || !p.pages || m.pages.some(i => p.pages.includes(i))))) out.add(p.studentKey);
+  }
+  return Array.from(out);
 }
 function partSig(key) { return workParts(key).map(p => p.docId + ':' + (p.pages || []).join('.')).sort().join('|'); }
 function needsGrading(key) {
@@ -1240,6 +1302,7 @@ const SPLIT_TOOL = {
             roster_name: { type: ['string', 'null'], description: 'The matching roster entry copied exactly as "Last, First", or null if you cannot tell.' },
             period: { type: ['integer', 'null'] },
             name_as_written: { type: ['string', 'null'], description: 'The name exactly as the student wrote it, if any.' },
+            group_members: { type: 'array', items: { type: 'string' }, description: 'Only for partner or group work made together: every member\'s roster entry as "Last, First". Leave empty otherwise.' },
             kind: { type: 'string', enum: ['work', 'name_only', 'blank', 'other_assignment'] },
             note: { type: 'string', description: 'Short note for the teacher, or empty.' }
           },
@@ -1250,6 +1313,16 @@ const SPLIT_TOOL = {
     required: ['segments']
   }
 };
+// a "Last, First" name from Claude to a roster key
+function rosterKey(rosterName, period) {
+  if (!rosterName) return null;
+  const n = splitName(rosterName);
+  const hit = S.roster.filter(s => norm(s.last) === norm(n.last) && (norm(s.first) === norm(n.first) || s.aliases.some(a => norm(a) === norm(n.first))));
+  if (hit.length === 1) return hit[0].key;
+  if (hit.length > 1 && period != null) { const p = hit.find(s => s.period === period); if (p) return p.key; }
+  const m = matchText(`${n.first} ${n.last}`, period ?? null, 9) || matchText(`${n.first} ${n.last}`, null, 9);
+  return m && !m.multi ? m.key : null;
+}
 async function splitDoc(d) {
   const pages = d.pages.length ? d.pages : [];
   const maxDim = pages.length > 30 ? 750 : pages.length > 12 ? 900 : 1100;
@@ -1271,12 +1344,16 @@ How to find names:
 - Students may use nicknames, initials, or just a first name. Pick the roster entry that fits, considering the period if one is written.
 - Consecutive pages with the same handwriting, book, and paper usually belong together.
 - If you can't tell whose work it is, set roster_name to null and describe what you see in the note (book title, any partial name).
+- If the file name or the pages name more than one student (like "Gemma and Jack"), the file holds work from each of them. Usually each student has their own pages, even when only one page shows a name: different handwriting, book, or quest means a different student. Don't give every page to one student just because only their name is written.
+- If several students made one piece together (a partner or group project with all their names on it), make one segment for those pages, put one member in roster_name, and list every member in group_members.
 
 Use kind "blank" for empty pages and "other_assignment" for pages that are clearly a different assignment (a worksheet, notes, or another class's work, not a creative response to their reading book).
 Every page number must appear in exactly one segment.
 
 ROSTER
 ${rosterLines(d.period)}`;
+  const many = namesInDoc(d);
+  if (many) content.push({ type: 'text', text: `This file looks like it holds work from more than one student${many.length ? ` (${many.map(k => fullName(stu(k))).join(', ')})` : ''}. Find each one's pages.` });
   const out = await callClaude({ system, content, tool: SPLIT_TOOL, maxTokens: 6000 });
   const segs = Array.isArray(out.segments) ? out.segments : [];
   // drop any existing parts for this doc, then add the new segments
@@ -1286,18 +1363,16 @@ ${rosterLines(d.period)}`;
     const idx = (sg.pages || []).map(n => Number(n) - 1).filter(i => i >= 0 && i < Math.max(1, pages.length) && !seen.has(i));
     idx.forEach(i => seen.add(i));
     if (!idx.length && pages.length) continue;
-    let key = null;
-    if (sg.roster_name) {
-      const n = splitName(sg.roster_name);
-      const hit = S.roster.filter(s => norm(s.last) === norm(n.last) && (norm(s.first) === norm(n.first) || s.aliases.some(a => norm(a) === norm(n.first))));
-      if (hit.length === 1) key = hit[0].key;
-      else if (hit.length > 1 && sg.period != null) key = (hit.find(s => s.period === sg.period) || {}).key || null;
-      if (!key) { const m = matchText(`${n.first} ${n.last}`, sg.period ?? null, 9) || matchText(`${n.first} ${n.last}`, null, 9); if (m && !m.multi) key = m.key; }
-    }
+    let key = rosterKey(sg.roster_name, sg.period);
     if (!key && sg.name_as_written) { const m = matchText(sg.name_as_written, sg.period ?? d.period, 7); if (m && !m.multi) key = m.key; }
     const kind = sg.kind === 'blank' ? 'blank' : sg.kind === 'other_assignment' ? 'other' : 'work';
     RT.parts.push({ id: uid(), docId: d.id, pages: pages.length ? idx : null, studentKey: kind === 'other' ? null : key, source: 'Claude read the pages',
       aiName: sg.name_as_written || sg.roster_name || '', kind, note: sg.note || '', ignored: kind === 'blank' && !key });
+    // partner or group work: the same pages count for each member
+    if (kind === 'work') {
+      const extra = new Set((Array.isArray(sg.group_members) ? sg.group_members : []).map(n => rosterKey(n, sg.period)).filter(k => k && k !== key));
+      for (const k of extra) RT.parts.push({ id: uid(), docId: d.id, pages: pages.length ? idx : null, studentKey: k, source: 'Claude read the pages (group work)', aiName: '', kind: 'work', note: sg.note || '' });
+    }
   }
   // pages Claude skipped go to the unmatched tray
   const missed = pages.map((_, i) => i).filter(i => !seen.has(i));
@@ -1414,7 +1489,9 @@ async function gradeStudent(key) {
   const parts = workParts(key);
   const pages = parts.flatMap(partPages);
   const docs = Array.from(new Set(parts.map(p => p.docId))).map(id => RT.docs.find(d => d.id === id)).filter(Boolean);
-  const content = [{ type: 'text', text: `Student: ${s.first} ${s.last}${s.aliases.length ? ' (also goes by ' + s.aliases.join(', ') + ')' : ''}, Period ${s.period}.\nFiles: ${docs.map(d => d.name).join('; ')}` }];
+  const partners = partnersOf(key).map(k => fullName(stu(k)));
+  const content = [{ type: 'text', text: `Student: ${s.first} ${s.last}${s.aliases.length ? ' (also goes by ' + s.aliases.join(', ') + ')' : ''}, Period ${s.period}.\nFiles: ${docs.map(d => d.name).join('; ')}` +
+    (partners.length ? `\nThis is partner/group work made together with ${partners.join(', ')}. Their names on it are expected, so don't flag a name mismatch for them. Grade the shared work for ${s.first}.` : '') }];
   let pick = pages;
   if (pages.length > 20) { const step = pages.length / 20; pick = Array.from({ length: 20 }, (_, i) => pages[Math.floor(i * step)]); }
   const maxDim = pick.length > 10 ? 1000 : 1200;
@@ -1763,7 +1840,7 @@ function reviewRow(s) {
 function detailHtml(s) {
   const r = S.results[s.key] || {};
   const parts = partsFor(s.key);
-  const pages = parts.filter(p => p.kind === 'work').flatMap(partPages);
+  const pages = parts.filter(p => p.kind === 'work').flatMap(p => partPages(p).map(x => ({ ...x, partId: p.id })));
   const docs = Array.from(new Set(parts.map(p => p.docId))).map(id => RT.docs.find(d => d.id === id)).filter(Boolean);
   const texts = docs.filter(d => d.text && d.text.trim()).map(d => `<div class="doctext"><b>${esc(d.name)}</b>\n${esc(d.text.slice(0, 6000))}</div>`).join('');
   const others = S.roster.slice().sort((a, b) => a.period - b.period || natCmp(a.last, b.last)).filter(x => x.key !== s.key)
@@ -1772,11 +1849,20 @@ function detailHtml(s) {
   return `<div class="detail-grid">
     <div>
       <p class="hint" style="margin-bottom:6px">Files: ${filesLine}</p>
-      ${pages.length ? `<div class="thumbs">${pages.map((p, i) => `<img src="${p.url}" alt="${esc(p.doc.name)} page ${p.n}" data-lb="${esc(s.key)}" data-i="${i}">`).join('')}</div>` : ''}
+      ${partnersOf(s.key).length ? `<p class="hint" style="margin-bottom:6px">Group work, also given to: ${esc(partnersOf(s.key).map(k => fullName(stu(k))).join(', '))}</p>` : ''}
+      ${pages.length ? `<div class="thumbs">${pages.map((p, i) => `<div class="pg"><img src="${p.url}" alt="${esc(p.doc.name)} page ${p.n}" data-lb="${esc(s.key)}" data-i="${i}">
+        <label><input type="checkbox" data-pg="${esc(p.partId)}:${p.n - 1}"> Page ${p.n}</label></div>`).join('')}</div>
+        ` : ''}
+      ${(() => {
+        const typed = parts.filter(p => p.kind === 'work' && !partPages(p).length);
+        const boxes = typed.map(p => `<label class="row" style="margin-top:4px"><input type="checkbox" data-pg="${esc(p.id)}:all"> ${esc((RT.docs.find(d => d.id === p.docId) || {}).name || 'Typed work')} (typed)</label>`).join('');
+        return (pages.length + typed.length > 1 ? boxes + '<p class="hint" style="margin-top:4px">To move or share only some pages, check them first. With nothing checked, all of the work goes.</p>' : '');
+      })()}
       ${texts}
       <div class="row" style="margin-top:10px">
         <button class="btn small" data-regrade="${esc(s.key)}" ${workParts(s.key).length ? '' : 'disabled'}>Grade again</button>
         ${parts.length ? `<select data-move="${esc(s.key)}" style="width:auto"><option value="">Move this work to...</option>${others}</select>` : ''}
+        ${workParts(s.key).length ? `<select data-share="${esc(s.key)}" style="width:auto"><option value="">Also give this work to (partner)...</option>${others}</select>` : ''}
         <button class="btn small danger" data-clear="${esc(s.key)}">Clear grade</button>
       </div>
     </div>
@@ -2480,12 +2566,23 @@ function wire() {
       if (t.value === '') delete S.adjust[kind].s[key]; else S.adjust[kind].s[key] = t.value === '1';
       save(); renderReview(); return;
     }
-    if (t.dataset.move && t.value) {
-      const from = t.dataset.move, to = t.value;
-      RT.parts.filter(p => p.studentKey === from).forEach(p => { p.studentKey = to; p.source = 'you'; });
-      if (S.results[from] && !S.results[from].edited) delete S.results[from];
-      RT.open = null; renderAll(); renderReview();
-      if (S.settings.apiKey && workParts(to).length) { toast(`Grading ${fullName(stu(to))}...`); RT.stop = false; try { await gradeStudent(to); } catch (er) { toast(er.message); } renderReview(); }
+    if ((t.dataset.share || t.dataset.move) && t.value) {
+      const share = !!t.dataset.share, from = t.dataset.share || t.dataset.move, to = t.value;
+      const picks = checkedPages(t.closest('.detail'));
+      const n = giveWork(from, to, picks, share);
+      if (!n) { toast('Nothing to give. Check the pages first, or leave them all unchecked to give everything.'); renderReview(); return; }
+      const left = workParts(from).length;
+      if (!share && !left && S.results[from] && !S.results[from].edited) delete S.results[from];
+      if (!left) RT.open = null;
+      renderAll(); renderReview();
+      toast(`${share ? 'Also gave' : 'Moved'} ${picks ? `${n} page${n > 1 ? 's' : ''}` : 'the work'} to ${fullName(stu(to))}.`);
+      // grade whoever's work changed: the receiver, and the giver if they kept some pages
+      const regrade = [to, ...(!share && left ? [from] : [])].filter(k => workParts(k).length);
+      if (S.settings.apiKey && regrade.length) {
+        RT.stop = false;
+        for (const k of regrade) { toast(`Grading ${fullName(stu(k))}...`); try { await gradeStudent(k); } catch (er) { toast(er.message); } }
+        renderReview();
+      }
     }
   });
   $('#reviewTable').addEventListener('input', e => {
