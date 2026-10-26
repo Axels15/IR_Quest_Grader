@@ -285,6 +285,13 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
     <div class="card span2">
       <div class="card-head"><h2>Tasks by period</h2><p>Give each period its quest. Add a second option when a class gets a choice.</p></div>
       <div id="taskList"></div>
+      <div class="period-task" style="margin-top:12px">
+        <h4>Not required this time</h4>
+        <p class="hint">For things the quest card asks for but you didn't ask students for on this assignment. Claude won't take points off, flag it, or list it as a grow. The quest cards don't change, and this resets when you start a new assignment.</p>
+        <label class="row" style="margin-top:8px"><input type="checkbox" id="aNoParagraph"> Students weren't asked for the explanation paragraph</label>
+        <label class="f" for="aSkip">Anything else students weren't asked for (one per line)</label>
+        <textarea id="aSkip" rows="2" placeholder="Internal dialogue&#10;At least 25 texts"></textarea>
+      </div>
     </div>
 
     <div class="card span2">
@@ -606,7 +613,8 @@ function freshState() {
   return {
     v: 2,
     settings: { apiKey: '', model: 'claude-sonnet-5-5', customModel: '', parallel: 3 },
-    assignment: { title: 'IR Quest', date: todayISO(), points: 100, minPass: 65 },
+    // noParagraph / skip: requirements students weren't asked for on this assignment
+    assignment: { title: 'IR Quest', date: todayISO(), points: 100, minPass: 65, noParagraph: false, skip: '' },
     rubric: JSON.parse(JSON.stringify(DEFAULT_RUBRIC)),
     tasks: {},           // period -> [{name, text}]
     guidance: DEFAULT_GUIDANCE,
@@ -747,6 +755,11 @@ function levelChanged(key) {
   const r = S.results[key];
   return !!(r && r.gradedAt && rowState(key) === 'graded' && (Number(r.level) || 0) !== levelOf(key));
 }
+function reqChanged(key) {
+  const r = S.results[key];
+  return !!(r && r.gradedAt && rowState(key) === 'graded' && (r.req || '') !== reqKey());
+}
+function stale(key) { return levelChanged(key) || reqChanged(key); }
 // false when the rubric shape changed since grading (wrong number of rows, or a score above the top level)
 function scoresFit(scores) {
   return Array.isArray(scores) && scores.length === nCrit() && scores.every(v => v == null || v === '' || (Number(v) >= 1 && Number(v) <= nLev()));
@@ -1316,12 +1329,29 @@ function gradeTool() {
     }
   };
 }
+// quest text as students saw it for this assignment
+function questText(t) {
+  const s = String(t.text || '');
+  return S.assignment.noParagraph ? s.replace(EXPLAIN_LINE.trim(), '').replace(/\s+$/, '') : s;
+}
 function taskBlock(period) {
   const ts = (S.tasks[period] || []).filter(t => (t.text || t.name || '').trim());
   if (!ts.length) return 'No quest text was entered for this period. Judge whether the work is a thoughtful creative response to the student\'s reading.';
-  if (ts.length === 1) return `${ts[0].name ? ts[0].name + ': ' : ''}${ts[0].text}`;
-  return 'Students could choose one of these:\n' + ts.map((t, i) => `Option ${i + 1}. ${t.name ? t.name + ': ' : ''}${t.text}`).join('\n');
+  if (ts.length === 1) return `${ts[0].name ? ts[0].name + ': ' : ''}${questText(ts[0])}`;
+  return 'Students could choose one of these:\n' + ts.map((t, i) => `Option ${i + 1}. ${t.name ? t.name + ': ' : ''}${questText(t)}`).join('\n');
 }
+function skipList() {
+  const a = S.assignment;
+  return [a.noParagraph ? 'The one paragraph explanation of their choices (other parts of the quest that are explanations, like static/dynamic, are still required)' : '']
+    .concat(String(a.skip || '').split('\n').map(x => x.trim().replace(/^[-*•]\s*/, '')))
+    .filter(Boolean);
+}
+function skipBlock() {
+  const l = skipList();
+  return l.length ? `\n\nNOT REQUIRED ON THIS ASSIGNMENT\nStudents were not asked for these this time, even if the quest card mentions them. Don't lower any score for leaving them out, don't flag them as missing or incomplete, and don't list them in grows or the comment. If a student did include one, you can still give credit for it.\n` + l.map(x => '- ' + x).join('\n') : '';
+}
+// what was not required when a student was graded, so changes can be spotted
+function reqKey() { return skipList().join('|'); }
 function rubricBlock() {
   const L = S.rubric.levels;
   return S.rubric.criteria.map((c, ci) => `${c}\n` + L.map((l, li) => `  ${pointsForLevel(li)} points (${l}): ${S.rubric.descriptions[ci + '_' + li] || ''}`).join('\n')).join('\n');
@@ -1335,7 +1365,7 @@ function gradeSystem(period, key) {
   return `You are helping Mr. Axelson, a 7th grade ELA teacher at a public middle school, grade "${S.assignment.title}", a creative response students make about their independent reading book. You will see one student's submission: scans, photos, slides, or text from their document. Record the grade with the record_grade tool.
 
 THE QUEST FOR PERIOD ${period}
-${taskBlock(period)}
+${taskBlock(period)}${skipBlock()}
 
 RUBRIC (whole points only, ${nLev()} is highest and 1 is lowest)
 ${rubricBlock()}
@@ -1393,7 +1423,7 @@ async function gradeStudent(key) {
       book: out.book_title || '', task: out.task_done || '', onTask: out.on_task !== false,
       nameOnWork: out.name_on_work || '', evidence: out.reading_evidence || '',
       flags: (out.flags || []).filter(f => FLAG_TYPES[f.type]), teacherNote: out.teacher_note || '', comment: out.student_comment || '',
-      glows: bullets(out.glows), grows: bullets(out.grows), level,
+      glows: bullets(out.glows), grows: bullets(out.grows), level, req: reqKey(),
       files: docs.map(d => d.name), sig, gradedAt: new Date().toISOString(), edited: false, model: modelId()
     };
   } catch (e) {
@@ -1474,6 +1504,7 @@ function renderAll() { renderHeader(); renderSetup(); renderUpPeriods(); renderF
 function renderSetup() {
   const a = S.assignment;
   $('#aTitle').value = a.title; $('#aDate').value = a.date; $('#aPoints').value = a.points; $('#aMin').value = a.minPass;
+  $('#aNoParagraph').checked = !!a.noParagraph; $('#aSkip').value = a.skip || '';
   $('#guidance').value = S.guidance; $('#offTask').value = S.offTask;
   $('#apiKey').value = S.settings.apiKey; $('#model').value = S.settings.model; $('#customModel').value = S.settings.customModel;
   $('#customModelWrap').classList.toggle('hidden', S.settings.model !== 'custom');
@@ -1499,10 +1530,11 @@ function renderAdjust() {
 }
 function renderLevelBar() {
   const p = S.ui.period;
-  const changed = studentsIn(p).filter(st => levelChanged(st.key));
+  const changed = studentsIn(p).filter(st => stale(st.key));
   if (!changed.length) { $('#levelBar').innerHTML = ''; return; }
   const ready = changed.filter(st => workParts(st.key).length), missing = changed.length - ready.length;
-  $('#levelBar').innerHTML = `<div class="levelbar"><span><b>${changed.length}</b> graded student${changed.length > 1 ? 's have' : ' has'} a new grading level that isn't applied yet.${missing ? ` ${missing} need${missing > 1 ? '' : 's'} their work re-uploaded first.` : ''} Grading again replaces any score edits you made for them.</span>
+  const what = [changed.some(st => levelChanged(st.key)) ? 'the grading level' : '', changed.some(st => reqChanged(st.key)) ? 'the requirements' : ''].filter(Boolean).join(' or ') + ' changed';
+  $('#levelBar').innerHTML = `<div class="levelbar"><span><b>${changed.length}</b> student${changed.length > 1 ? 's were' : ' was'} graded before ${what}.${missing ? ` ${missing} need${missing > 1 ? '' : 's'} their work re-uploaded first.` : ''} Grading again replaces any score edits you made for them.</span>
     ${ready.length ? `<button class="btn small" id="btnRegradeLevel">Grade ${ready.length} again</button>` : ''}</div>`;
 }
 function renderConv() {
@@ -1666,6 +1698,7 @@ function reviewRow(s) {
   if (r.edited) chips.push('<span class="chip info">Edited</span>');
   if (levelOf(s.key) !== 0) chips.push(`<span class="chip">${esc(levelName(levelOf(s.key)))}</span>`);
   if (levelChanged(s.key)) chips.push(`<span class="chip bad" title="Graded at ${esc(levelName(r.level || 0))}. Grade again to apply the new level.">Level changed</span>`);
+  if (reqChanged(s.key)) chips.push('<span class="chip bad" title="Graded before the requirements for this assignment changed. Grade again to apply them.">Requirements changed</span>');
   (r.flags || []).forEach(f => chips.push(`<span class="chip flag" title="${esc(f.note)}">${esc(FLAG_TYPES[f.type] || f.type)}</span>`));
   const open = RT.open === s.key;
   let h = `<tr class="main" data-row="${esc(s.key)}"><td class="who">${esc(s.first)} ${esc(s.last)}<small>${sub}</small></td>
@@ -1726,7 +1759,7 @@ function adjustHtml(s, r) {
     return `<option value="" ${!setVal(cur) ? 'selected' : ''}>Same as class (${inh ? 'On' : 'Off'})</option><option value="1" ${setVal(cur) && cur ? 'selected' : ''}>On</option><option value="0" ${setVal(cur) && !cur ? 'selected' : ''}>Off</option>`;
   };
   let note = '';
-  if (levelChanged(s.key)) note = `<p class="hint" style="color:var(--red);margin:-4px 0 10px">Graded at ${esc(levelName(r.level || 0))}. ${workParts(s.key).length ? 'Use Grade again to apply the new level.' : 'Re-upload their work, then use Grade again to apply the new level.'}</p>`;
+  if (stale(s.key)) note = `<p class="hint" style="color:var(--red);margin:-4px 0 10px">${levelChanged(s.key) ? `Graded at ${esc(levelName(r.level || 0))}.` : 'Graded before the requirements changed.'} ${workParts(s.key).length ? 'Use Grade again to apply the change.' : 'Re-upload their work, then use Grade again to apply the change.'}</p>`;
   return `<div class="adj-row"><label>Grading level<select data-slevel="${esc(s.key)}">${lv}</select></label><label>Glows/grows on PDF<select data-sgg="${esc(s.key)}">${onOff('gg')}</select></label><label>Comment on PDF<select data-scm="${esc(s.key)}">${onOff('cm')}</select></label></div>${note}`;
 }
 function renderTray() {
@@ -2104,8 +2137,8 @@ function crGuessPeriod(c) {
 }
 function crDescription(p) {
   const ts = (S.tasks[p] || []).filter(t => (t.text || t.name || '').trim());
-  const quest = !ts.length ? '' : ts.length === 1 ? `${ts[0].name ? ts[0].name + ': ' : ''}${ts[0].text}`
-    : 'Choose one:\n' + ts.map((t, i) => `${i + 1}. ${t.name ? t.name + ': ' : ''}${t.text}`).join('\n');
+  const quest = !ts.length ? '' : ts.length === 1 ? `${ts[0].name ? ts[0].name + ': ' : ''}${questText(ts[0])}`
+    : 'Choose one:\n' + ts.map((t, i) => `${i + 1}. ${t.name ? t.name + ': ' : ''}${questText(t)}`).join('\n');
   return [quest, (S.classroom.note || '').trim()].filter(Boolean).join('\n\n');
 }
 // Classroom stores due dates in UTC
@@ -2199,7 +2232,7 @@ function wire() {
     S.results = {}; RT.docs = []; RT.parts = []; RT.hashes.clear(); RT.open = null; CR.touched = false; CR.status = {};
     const m = String(S.assignment.title).match(/^(.*?)(\d+)\s*$/);
     if (m) S.assignment.title = m[1] + (Number(m[2]) + 1);
-    S.assignment.date = todayISO();
+    S.assignment.date = todayISO(); S.assignment.noParagraph = false; S.assignment.skip = '';
     save(); renderAll(); toast('Ready for a new assignment.');
   });
   // roster
@@ -2277,6 +2310,8 @@ function wire() {
     if (t.dataset.crpick) { CR.touched = true; t.checked ? CR.checked.add(Number(t.dataset.crpick)) : CR.checked.delete(Number(t.dataset.crpick)); }
   });
   $('#btnCopyScript2').addEventListener('click', async () => { try { await navigator.clipboard.writeText(MAILER_SCRIPT); toast('Script copied.'); } catch (e) { toast('Open the Export and email tab and copy the script from there.'); } });
+  $('#aNoParagraph').addEventListener('change', e => { S.assignment.noParagraph = e.target.checked; save(); renderReviewCounts(); });
+  $('#aSkip').addEventListener('input', e => { S.assignment.skip = e.target.value; save(); });
   // guidance + claude
   $('#guidance').addEventListener('input', e => { S.guidance = e.target.value; save(); });
   $('#offTask').addEventListener('change', e => { S.offTask = e.target.value; save(); });
@@ -2327,7 +2362,7 @@ function wire() {
   $('#levelBar').addEventListener('click', async e => {
     const b = e.target.closest('#btnRegradeLevel'); if (!b) return;
     if (!S.settings.apiKey) { toast('Add your Anthropic API key on the Set up tab first.'); return; }
-    const keys = studentsIn(S.ui.period).filter(st => levelChanged(st.key) && workParts(st.key).length).map(st => st.key);
+    const keys = studentsIn(S.ui.period).filter(st => stale(st.key) && workParts(st.key).length).map(st => st.key);
     b.disabled = true; b.textContent = 'Grading...'; RT.stop = false;
     let done = 0, errs = 0;
     await runPool(keys, async k => { try { await gradeStudent(k); } catch (er) { errs++; } }, () => { done++; b.textContent = `Graded ${done} of ${keys.length}...`; });
