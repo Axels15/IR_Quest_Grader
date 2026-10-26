@@ -2137,6 +2137,8 @@ function insertTag(tag) {
   el.focus(); el.setSelectionRange(MAIL_FIELD.start, MAIL_FIELD.start);
   saveMailFields();
 }
+// has an email and a grade to send
+function mailable(s) { return !!s.email && !!gradeText(s); }
 function mailCandidates() {
   const p = $('#mailPeriod').value;
   const ps = p === 'all' || !p ? periods() : [Number(p)];
@@ -2154,12 +2156,13 @@ function renderMail() {
 function renderMailTable() {
   const list = mailCandidates(); const sent = sentMap();
   if (!MAIL.checked) MAIL.checked = new Set();
-  list.forEach(s => { if (!(s.key in MAIL.status) && s.email && !sent[s.key] && !MAIL.touched) MAIL.checked.add(s.key); });
+  list.forEach(s => { if (!(s.key in MAIL.status) && mailable(s) && !sent[s.key] && !MAIL.touched) MAIL.checked.add(s.key); });
+  list.forEach(s => { if (!gradeText(s)) MAIL.checked.delete(s.key); });
   $('#mailTable').innerHTML = `<tr><th></th><th>Student</th><th>Email</th><th>Grade</th><th>Status</th></tr>` + (list.length ? list.map(s => {
     const st = MAIL.status[s.key];
-    return `<tr><td><input type="checkbox" data-mail="${esc(s.key)}" ${MAIL.checked.has(s.key) ? 'checked' : ''} ${s.email ? '' : 'disabled'} aria-label="Send to ${esc(s.first)}"></td>
+    return `<tr><td><input type="checkbox" data-mail="${esc(s.key)}" ${MAIL.checked.has(s.key) ? 'checked' : ''} ${mailable(s) ? '' : 'disabled'} aria-label="Send to ${esc(s.first)}"></td>
       <td>P${s.period} ${esc(s.last)}, ${esc(s.first)}</td><td>${s.email ? esc(s.email) : '<span class="hint">No email on the roster</span>'}</td>
-      <td>${gradeFor(S.results[s.key].scores)}</td>
+      <td>${gradeText(s) ? esc(gradeText(s)) : '<span class="hint">No grade</span>'}</td>
       <td>${st ? (st.ok ? `<span class="chip ok">${esc(st.msg)}</span>` : st.busy ? '<span class="chip info">Sending...</span>' : `<span class="chip bad">${esc(st.msg)}</span>`) : sent[s.key] ? `<span class="chip ok">Sent ${new Date(sent[s.key]).toLocaleDateString()}</span>` : ''}</td></tr>`;
   }).join('') : `<tr><td colspan="5" class="hint">No graded students yet.</td></tr>`);
   $('#mailCount').textContent = `${list.filter(s => MAIL.checked.has(s.key)).length} checked`;
@@ -2168,7 +2171,7 @@ async function sendMail(test) {
   if (MAIL.sending) return;
   if (!readMailCode()) return;
   saveMailFields();
-  const list = mailCandidates().filter(s => MAIL.checked.has(s.key) && s.email);
+  const list = mailCandidates().filter(s => MAIL.checked.has(s.key) && mailable(s));
   if (!list.length) { toast(test ? 'Check at least one student to use as the test.' : 'Nobody is checked.'); return; }
   if (!test && !confirm(`Email rubrics to ${list.length} student${list.length > 1 ? 's' : ''}?`)) return;
   MAIL.sending = true; $('#btnMailSend').disabled = true; $('#btnMailTest').disabled = true;
@@ -2563,7 +2566,7 @@ function wire() {
     catch (e) { $('#mailStatus').innerHTML = `<span class="chip bad">${esc(e.message)}</span>`; }
   });
   $('#mailTable').addEventListener('change', e => { const k = e.target.dataset.mail; if (!k) return; MAIL.touched = true; e.target.checked ? MAIL.checked.add(k) : MAIL.checked.delete(k); renderMailTable(); });
-  $('#btnMailAll').addEventListener('click', () => { MAIL.touched = true; mailCandidates().filter(s => s.email).forEach(s => MAIL.checked.add(s.key)); renderMailTable(); });
+  $('#btnMailAll').addEventListener('click', () => { MAIL.touched = true; mailCandidates().filter(mailable).forEach(s => MAIL.checked.add(s.key)); renderMailTable(); });
   $('#btnMailNone').addEventListener('click', () => { MAIL.touched = true; MAIL.checked.clear(); renderMailTable(); });
   $('#btnMailTest').addEventListener('click', () => sendMail(true));
   $('#btnMailSend').addEventListener('click', () => sendMail(false));
