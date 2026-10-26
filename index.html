@@ -1874,8 +1874,7 @@ function detailHtml(s) {
   const pages = parts.filter(p => p.kind === 'work').flatMap(p => partPages(p).map(x => ({ ...x, partId: p.id })));
   const docs = Array.from(new Set(parts.map(p => p.docId))).map(id => RT.docs.find(d => d.id === id)).filter(Boolean);
   const texts = docs.filter(d => d.text && d.text.trim()).map(d => `<div class="doctext"><b>${esc(d.name)}</b>\n${esc(d.text.slice(0, 6000))}</div>`).join('');
-  const others = S.roster.slice().sort((a, b) => a.period - b.period || natCmp(a.last, b.last)).filter(x => x.key !== s.key)
-    .map(x => `<option value="${esc(x.key)}">P${x.period} ${esc(x.last)}, ${esc(x.first)}</option>`).join('');
+  const others = rosterOptions(s.period, { only: false, skip: s.key });
   const filesLine = docs.length ? docs.map(d => esc(d.name)).join('; ') : (r.files && r.files.length ? esc(r.files.join('; ')) + ' <span class="hint">(re-upload to view)</span>' : 'None');
   return `<div class="detail-grid">
     <div>
@@ -1937,9 +1936,18 @@ function renderTray() {
   $('#tray').innerHTML = `<details class="tray" ${un.length <= 12 ? 'open' : ''}><summary><h3>Work without a name (${un.length})</h3> <span class="hint">Pick the student and it gets graded. Ignore anything that isn't this assignment.</span></summary>
     <div class="tray-grid">${un.map(p => trayItem(p, 4)).join('')}</div></details>`;
 }
-function rosterOptions() {
-  return S.roster.slice().sort((a, b) => a.period - b.period || natCmp(a.last, b.last))
-    .map(x => `<option value="${esc(x.key)}">P${x.period} ${esc(x.last)}, ${esc(x.first)}</option>`).join('');
+// students as <option>s: one period's, or everyone grouped by period (a given period first)
+function rosterOptions(period, { only = true, skip = null } = {}) {
+  const opt = x => x.key === skip ? '' : `<option value="${esc(x.key)}">${esc(x.last)}, ${esc(x.first)}</option>`;
+  if (only && period != null) return studentsIn(period).map(opt).join('');
+  const ps = periods().sort((a, b) => (a === period ? -1 : b === period ? 1 : a - b));
+  return ps.map(p => `<optgroup label="Period ${p}">${studentsIn(p).map(opt).join('')}</optgroup>`).join('');
+}
+// which period a picker starts on: the file's, else the last one picked
+function pickerPeriod(p) {
+  const d = RT.docs.find(x => x.id === p.docId), ps = periods();
+  const want = d && d.period != null ? d.period : S.ui.pickPeriod;
+  return ps.includes(want) ? want : ps[0];
 }
 // one piece of work without a name: its pages, what Claude saw, and a student picker
 function trayItem(p, maxThumbs) {
@@ -1948,7 +1956,8 @@ function trayItem(p, maxThumbs) {
     <div class="thumbs">${pg.slice(0, maxThumbs).map((x, i) => `<img src="${x.url}" alt="page ${x.n}" data-lbpart="${p.id}" data-i="${i}">`).join('')}${pg.length > maxThumbs ? `<span class="hint">+${pg.length - maxThumbs} more (tap a page to see all)</span>` : ''}</div>
     ${p.aiName ? `<p>Name Claude saw: <b>${esc(p.aiName)}</b></p>` : ''}${p.kind === 'other' ? '<p><span class="chip">Looks like a different assignment</span></p>' : ''}
     ${p.note ? `<p class="hint">${esc(p.note)}</p>` : ''}
-    <div class="row"><select data-assign="${p.id}" style="flex:1"><option value="">Whose work is this?</option>${rosterOptions()}</select>
+    <div class="row"><select data-pickper="${p.id}" style="width:auto" aria-label="Period">${periods().map(x => `<option value="${x}" ${x === pickerPeriod(p) ? 'selected' : ''}>Period ${x}</option>`).join('')}</select>
+    <select data-assign="${p.id}" style="flex:1"><option value="">Whose work is this?</option>${rosterOptions(pickerPeriod(p))}</select>
     <button class="btn small" data-ignore="${p.id}">Ignore</button></div></div>`;
 }
 function openLightbox(list, i) {
@@ -2670,7 +2679,17 @@ function wire() {
   });
   // unnamed work: the box on the Review tab and the rows under each file on the Upload tab
   for (const el of [$('#tray'), $('#fileTable')]) {
-    el.addEventListener('change', e => { const t = e.target; if (t.dataset.assign && t.value) assignPart(t.dataset.assign, t.value); });
+    el.addEventListener('change', e => {
+      const t = e.target;
+      if (t.dataset.pickper) {
+        // switch the student list next to it to that period, and remember it for the next picker
+        S.ui.pickPeriod = Number(t.value); save();
+        const sel = t.parentElement.querySelector('[data-assign]');
+        sel.innerHTML = '<option value="">Whose work is this?</option>' + rosterOptions(Number(t.value));
+        return;
+      }
+      if (t.dataset.assign && t.value) assignPart(t.dataset.assign, t.value);
+    });
     el.addEventListener('click', e => {
       const ig = e.target.closest('[data-ignore]'); if (ig) { const p = partFor(ig.dataset.ignore); if (p) p.ignored = true; renderFiles(); if (S.ui.tab === 'review') renderReview(); return; }
       const img = e.target.closest('img[data-lbpart]');
