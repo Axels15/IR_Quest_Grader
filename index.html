@@ -285,13 +285,15 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
     <div class="card span2">
       <div class="card-head"><h2>Tasks by period</h2><p>Give each period its quest. Add a second option when a class gets a choice.</p></div>
       <div id="taskList"></div>
-      <div class="period-task" style="margin-top:12px">
-        <h4>Not required this time</h4>
-        <p class="hint">For things the quest card asks for but you didn't ask students for on this assignment. Claude won't take points off, flag it, or list it as a grow. The quest cards don't change, and this resets when you start a new assignment.</p>
-        <label class="row" style="margin-top:8px"><input type="checkbox" id="aNoParagraph"> Students weren't asked for the explanation paragraph</label>
-        <label class="f" for="aSkip">Anything else students weren't asked for (one per line)</label>
-        <textarea id="aSkip" rows="2" placeholder="Internal dialogue&#10;At least 25 texts"></textarea>
-      </div>
+    </div>
+
+    <div class="card span2">
+      <div class="card-head"><h2>Didn't ask for everything on the card?</h2></div>
+      <p class="hint">Check off anything students weren't told to do this time. Claude won't take points off for it or list it as a grow. Only this assignment changes. The quest cards stay the same.</p>
+      <label class="row" style="margin-top:10px"><input type="checkbox" id="aNoParagraph"> <span>Don't require the <b>one paragraph explanation of their choices</b></span></label>
+      <label class="f" for="aSkip">Anything else they weren't asked for (one per line)</label>
+      <textarea id="aSkip" rows="2" placeholder="Internal dialogue&#10;At least 25 texts"></textarea>
+      <div id="skipStatus" style="margin-top:10px"></div>
     </div>
 
     <div class="card span2">
@@ -331,6 +333,7 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
       <div class="card-head"><h2>How to grade</h2></div>
       <label class="f" for="guidance">Guidance for Claude</label>
       <textarea id="guidance" rows="9"></textarea>
+      <button class="linkbtn" id="btnGuidanceDefault" style="margin-top:4px">Use the default guidance</button>
       <label class="f" for="offTask">When a student does a different quest than assigned</label>
       <select id="offTask">
         <option value="cap">Score Task Criteria at the lowest level and flag it</option>
@@ -406,6 +409,7 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
       <button data-f="none" aria-pressed="false">No work yet</button>
     </div>
     <div class="summary" id="reviewSummary"></div>
+    <div id="classActions"></div>
   </div>
   <div id="levelBar"></div>
   <div class="rtable-wrap"><table class="rtable" id="reviewTable"></table></div>
@@ -588,7 +592,18 @@ Reward specific details that only come from reading the book: character names, p
 A 3 means the student went above and beyond. A 2 is solid, ordinary work. A 1 means very little effort, very little of the task, or almost nothing that shows reading.
 
 Watch for signs that a student used AI or copied text instead of reading: adult-sounding polished phrasing, summaries that read like the back cover or a website, general statements with no specific details, or two different versions of the same work. It can be hard to tell, so flag it for me and explain why, but score the work as written.`;
-const DEFAULT_GUIDANCE = `Grade in an easy-going way. These quests exist to show that students are actually doing their independent reading and putting some thought into the assignment. The work doesn't need to be amazing.
+const DEFAULT_GUIDANCE = `Grade in an easy-going, generous way. These quests exist to show that students are actually doing their independent reading and putting some thought into the assignment. The work doesn't need to be amazing. A typical student who did the quest with real effort and details from their book should land at 3 on every row.
+
+Reward specific details that only come from reading the book: character names, particular events, page numbers, quotes, small moments. Polish, art skill, spelling, and handwriting matter much less than evidence of reading and real effort.
+
+A 4 means the student went above and beyond. A 3 is solid work that does the quest, even if one small part is thin, short, or a little off. A 2 means a main part of the quest is missing, or the details are mostly general. A 1 means very little effort, very little of the task, or almost nothing that shows reading.
+
+Give the benefit of the doubt. Read "meets all requirements" generously: if the main parts of the quest are there, that counts. When the work falls between two levels, give the higher one. One small missing or thin piece should not drop a row below 3 on its own. Score the row on the work as a whole and name the missing piece in grows instead.
+
+The Evidence of Independent Reading row is about whether the work shows the student has actually been reading the book on their own over the past couple of weeks, not just skimming the cover, a summary, or the first chapter. Specific, accurate details from deeper in the book are the strongest sign.
+
+Watch for signs that a student used AI or copied text instead of reading: adult-sounding polished phrasing, summaries that read like the back cover or a website, general statements with no specific details, or two different versions of the same work. It can be hard to tell, so flag it for me and explain why, but score the work as written.`;
+const OLD_GUIDANCE_V2 = `Grade in an easy-going way. These quests exist to show that students are actually doing their independent reading and putting some thought into the assignment. The work doesn't need to be amazing.
 
 Reward specific details that only come from reading the book: character names, particular events, page numbers, quotes, small moments. Polish, art skill, spelling, and handwriting matter much less than evidence of reading and real effort.
 
@@ -634,7 +649,7 @@ let S = loadState();
 // Fill in anything an older save or backup is missing, and upgrade old defaults
 function mergeState(s) {
   const base = freshState();
-  if (s.guidance === OLD_GUIDANCE_V1) s.guidance = DEFAULT_GUIDANCE;
+  if (s.guidance === OLD_GUIDANCE_V1 || s.guidance === OLD_GUIDANCE_V2) s.guidance = DEFAULT_GUIDANCE;
   if (s.rubric && JSON.stringify(s.rubric) === JSON.stringify(OLD_RUBRIC_V1)) s.rubric = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
   // v2: glows/grows print by default (comments now have their own setting, off by default)
   if ((s.v || 1) < 2) { if (s.adjust && s.adjust.gg) s.adjust.gg.all = true; s.v = base.v; }
@@ -734,7 +749,7 @@ function levelLabel(l, li) { return /^\s*\d/.test(l) ? l : `${l} (${pointsForLev
 // ---------------- grading level + glows/grows ----------------
 const LEVELS = [
   { v: -2, name: 'Much more lenient', prompt: 'Grade this student much more leniently than usual. Give the benefit of the doubt on every row: when the work is near a level, give the higher one. As long as there is real effort and some sign of reading, missing or thin parts should cost little.' },
-  { v: -1, name: 'More lenient', prompt: 'Grade this student a little more leniently than usual. When the work falls between two levels, give the higher one.' },
+  { v: -1, name: 'More lenient', prompt: 'Grade this student more leniently than usual. If the main idea of the quest is there with some sign of reading, give at least 3 on each row unless a row is clearly far off.' },
   { v: 0, name: 'Standard', prompt: '' },
   { v: 1, name: 'Stricter', prompt: 'Grade this student a little more strictly than usual. When the work falls between two levels, give the lower one. Mastery should mean every part of the quest is done as written.' },
   { v: 2, name: 'Much stricter', prompt: 'Grade this student much more strictly than usual. Save the top level for clearly exceptional work, require every part of the quest and specific details from the book for Mastery, and do not give the benefit of the doubt.' }
@@ -1509,7 +1524,7 @@ function renderSetup() {
   $('#apiKey').value = S.settings.apiKey; $('#model').value = S.settings.model; $('#customModel').value = S.settings.customModel;
   $('#customModelWrap').classList.toggle('hidden', S.settings.model !== 'custom');
   $('#parallel').value = S.settings.parallel;
-  renderConv(); renderRoster(); renderRubric(); renderTasks(); renderAdjust(); renderUsage(); renderClassroom();
+  renderConv(); renderRoster(); renderRubric(); renderTasks(); renderAdjust(); renderUsage(); renderClassroom(); renderSkipStatus();
 }
 function renderAdjust() {
   const a = S.adjust;
@@ -1527,6 +1542,34 @@ function renderAdjust() {
       <td class="hint">${ind ? `${ind} student${ind > 1 ? 's' : ''} set individually` : ''}</td></tr>`;
   }
   $('#adjTable').innerHTML = h + '</tbody>';
+}
+async function regrade(keys, btn) {
+  if (!keys.length) return;
+  if (!S.settings.apiKey) { toast('Add your Anthropic API key on the Set up tab first.'); return; }
+  if (RT.running) { toast('Grading is already running.'); return; }
+  RT.stop = false; RT.running = true; btn.disabled = true; btn.textContent = 'Grading...';
+  let done = 0, errs = 0;
+  try {
+    await runPool(keys, async k => { try { await gradeStudent(k); } catch (er) { errs++; } },
+      () => { done++; btn.textContent = `Graded ${done} of ${keys.length}...`; });
+  } finally { RT.running = false; }
+  toast(errs ? `${keys.length - errs} graded again. ${errs} couldn't be graded: open their rows to see why.` : `Graded ${keys.length} again.`);
+  renderAll(); if (S.ui.tab === 'review') renderReview();
+}
+// the "Didn't ask for everything" card: who was graded under the old requirements
+function renderSkipStatus() {
+  const changed = S.roster.filter(st => reqChanged(st.key));
+  if (!changed.length) { $('#skipStatus').innerHTML = ''; return; }
+  const ready = changed.filter(st => workParts(st.key).length), missing = changed.length - ready.length;
+  $('#skipStatus').innerHTML = `<div class="levelbar"><span><b>${changed.length}</b> student${changed.length > 1 ? 's were' : ' was'} graded before this change.${
+    missing ? ` ${missing} need${missing > 1 ? '' : 's'} their work uploaded again on the Upload tab first.` : ''}</span>${
+    ready.length ? `<button class="btn small" id="btnRegradeSkip">Grade ${ready.length} again</button>` : ''}</div>`;
+}
+function renderClassActions() {
+  const p = S.ui.period, withWork = studentsIn(p).filter(st => workParts(st.key).length).length;
+  const graded = studentsIn(p).filter(st => rowState(st.key) === 'graded').length;
+  $('#classActions').innerHTML = withWork ? `<button class="btn small" id="btnRegradeClass">Grade Period ${p} again (${withWork})</button>`
+    : graded ? `<span class="hint">Upload Period ${p}'s work again to regrade the class.</span>` : '';
 }
 function renderLevelBar() {
   const p = S.ui.period;
@@ -1681,7 +1724,7 @@ function renderReview() {
   for (const s of list) h += reviewRow(s);
   if (!list.length) h += `<tr><td colspan="${C.length + 4}" class="hint" style="padding:16px">Nobody here.</td></tr>`;
   $('#reviewTable').innerHTML = h + '</tbody>';
-  renderLevelBar();
+  renderLevelBar(); renderClassActions();
 }
 function scoreSelect(key, ci, val) {
   const opts = ['<option value="">–</option>'].concat(S.rubric.levels.map((l, li) => `<option value="${pointsForLevel(li)}" ${Number(val) === pointsForLevel(li) ? 'selected' : ''}>${pointsForLevel(li)}</option>`));
@@ -2310,10 +2353,15 @@ function wire() {
     if (t.dataset.crpick) { CR.touched = true; t.checked ? CR.checked.add(Number(t.dataset.crpick)) : CR.checked.delete(Number(t.dataset.crpick)); }
   });
   $('#btnCopyScript2').addEventListener('click', async () => { try { await navigator.clipboard.writeText(MAILER_SCRIPT); toast('Script copied.'); } catch (e) { toast('Open the Export and email tab and copy the script from there.'); } });
-  $('#aNoParagraph').addEventListener('change', e => { S.assignment.noParagraph = e.target.checked; save(); renderReviewCounts(); });
-  $('#aSkip').addEventListener('input', e => { S.assignment.skip = e.target.value; save(); });
+  $('#aNoParagraph').addEventListener('change', e => { S.assignment.noParagraph = e.target.checked; save(); renderSkipStatus(); });
+  $('#aSkip').addEventListener('input', e => { S.assignment.skip = e.target.value; save(); clearTimeout(renderSkipStatus._t); renderSkipStatus._t = setTimeout(renderSkipStatus, 400); });
   // guidance + claude
   $('#guidance').addEventListener('input', e => { S.guidance = e.target.value; save(); });
+  $('#btnGuidanceDefault').addEventListener('click', () => {
+    if (S.guidance === DEFAULT_GUIDANCE) { toast('Already using the default guidance.'); return; }
+    if (!confirm('Replace your guidance with the default? Your current text will be lost.')) return;
+    S.guidance = DEFAULT_GUIDANCE; $('#guidance').value = S.guidance; save(); toast('Default guidance restored.');
+  });
   $('#offTask').addEventListener('change', e => { S.offTask = e.target.value; save(); });
   $('#apiKey').addEventListener('input', e => { S.settings.apiKey = e.target.value.trim(); save(); });
   $('#model').addEventListener('change', e => { S.settings.model = e.target.value; $('#customModelWrap').classList.toggle('hidden', e.target.value !== 'custom'); save(); });
@@ -2359,15 +2407,18 @@ function wire() {
     }
     save(); renderAdjust();
   });
-  $('#levelBar').addEventListener('click', async e => {
+  $('#levelBar').addEventListener('click', e => {
     const b = e.target.closest('#btnRegradeLevel'); if (!b) return;
-    if (!S.settings.apiKey) { toast('Add your Anthropic API key on the Set up tab first.'); return; }
-    const keys = studentsIn(S.ui.period).filter(st => stale(st.key) && workParts(st.key).length).map(st => st.key);
-    b.disabled = true; b.textContent = 'Grading...'; RT.stop = false;
-    let done = 0, errs = 0;
-    await runPool(keys, async k => { try { await gradeStudent(k); } catch (er) { errs++; } }, () => { done++; b.textContent = `Graded ${done} of ${keys.length}...`; });
-    if (errs) toast(`${errs} couldn't be graded. Open their rows to see why.`);
-    renderReview();
+    regrade(studentsIn(S.ui.period).filter(st => stale(st.key) && workParts(st.key).length).map(st => st.key), b);
+  });
+  $('#classActions').addEventListener('click', e => {
+    const b = e.target.closest('#btnRegradeClass'); if (!b) return;
+    const keys = studentsIn(S.ui.period).filter(st => workParts(st.key).length).map(st => st.key);
+    if (confirm(`Grade all ${keys.length} students in Period ${S.ui.period} again? This replaces their scores, notes, and any changes you made by hand.`)) regrade(keys, b);
+  });
+  $('#skipStatus').addEventListener('click', e => {
+    const b = e.target.closest('#btnRegradeSkip'); if (!b) return;
+    regrade(S.roster.filter(st => reqChanged(st.key) && workParts(st.key).length).map(st => st.key), b);
   });
   $('#periodPills').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (b) { S.ui.period = Number(b.dataset.p); RT.open = null; save(); renderReview(); } });
   $('#filterPills').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { S.ui.filter = b.dataset.f; save(); renderReview(); } });
