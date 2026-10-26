@@ -456,8 +456,17 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
         <div class="grow"><label class="f" for="mailFrom">From name</label><input type="text" id="mailFrom"></div>
         <div class="grow" style="flex-basis:340px"><label class="f" for="mailSubject">Subject</label><input type="text" id="mailSubject"></div>
       </div>
-      <label class="f" for="mailBody">Message <span class="hint">({first}, {last}, and {assignment} fill in for each student)</span></label>
+      <div class="row" id="mailTags" style="margin-top:10px">
+        <span class="hint">Tap to add where your cursor is in the subject or message:</span>
+        <button class="btn small" data-tag="first">First name</button>
+        <button class="btn small" data-tag="last">Last name</button>
+        <button class="btn small" data-tag="assignment">Assignment</button>
+        <button class="btn small" data-tag="grade">Grade</button>
+        <button class="btn small" data-tag="period">Period</button>
+      </div>
+      <label class="f" for="mailBody">Message</label>
       <textarea id="mailBody" rows="5"></textarea>
+      <p class="hint" id="mailPreview" style="margin-top:4px;white-space:pre-wrap"></p>
       <div class="row" style="margin-top:10px">
         <select id="mailPeriod" style="width:auto"></select>
         <button class="btn small" id="btnMailAll">Check all</button>
@@ -2103,7 +2112,31 @@ async function mailPost(payload) {
   if (!data.ok) throw new Error(data.error || 'The mailer reported a problem.');
   return data;
 }
-function fillTpl(t, s) { return String(t || '').replace(/\{first\}/g, s.first).replace(/\{last\}/g, s.last).replace(/\{assignment\}/g, S.assignment.title); }
+function gradeText(s) {
+  const r = S.results[s.key], g = r ? gradeFor(r.scores) : null;
+  if (g == null) return '';
+  return Number(S.assignment.points) === 100 ? `${g}%` : `${g} / ${S.assignment.points}`;
+}
+function fillTpl(t, s) {
+  return String(t || '').replace(/\{first\}/g, s.first).replace(/\{last\}/g, s.last).replace(/\{assignment\}/g, S.assignment.title)
+    .replace(/\{grade\}/g, gradeText(s)).replace(/\{period\}/g, s.period);
+}
+// one student's filled-in subject and message, so the fill-ins are easy to check
+function renderMailPreview() {
+  const s = mailCandidates()[0];
+  $('#mailPreview').textContent = s ? `Preview for ${s.first} ${s.last}:\nSubject: ${fillTpl(S.mail.subject, s)}\n\n${fillTpl(S.mail.body, s)}` : '';
+}
+// where the insert buttons put a fill-in: the subject or message box used last
+const MAIL_FIELD = { el: null, start: 0, end: 0 };
+function insertTag(tag) {
+  const el = MAIL_FIELD.el || $('#mailBody');
+  const start = MAIL_FIELD.el ? MAIL_FIELD.start : el.value.length, end = MAIL_FIELD.el ? MAIL_FIELD.end : el.value.length;
+  const text = `{${tag}}`;
+  el.setRangeText(text, start, end, 'end');
+  MAIL_FIELD.el = el; MAIL_FIELD.start = MAIL_FIELD.end = start + text.length;
+  el.focus(); el.setSelectionRange(MAIL_FIELD.start, MAIL_FIELD.start);
+  saveMailFields();
+}
 function mailCandidates() {
   const p = $('#mailPeriod').value;
   const ps = p === 'all' || !p ? periods() : [Number(p)];
@@ -2116,7 +2149,7 @@ function renderMail() {
   const cur = $('#mailPeriod').value || 'all';
   $('#mailPeriod').innerHTML = `<option value="all">All periods</option>` + periods().map(p => `<option value="${p}">Period ${p}</option>`).join('');
   $('#mailPeriod').value = Array.from($('#mailPeriod').options).some(o => o.value === cur) ? cur : 'all';
-  renderMailTable();
+  renderMailTable(); renderMailPreview();
 }
 function renderMailTable() {
   const list = mailCandidates(); const sent = sentMap();
@@ -2262,6 +2295,7 @@ async function postClassroom() {
 
 function saveMailFields() {
   S.mail.fromName = $('#mailFrom').value; S.mail.subject = $('#mailSubject').value; S.mail.body = $('#mailBody').value; save();
+  renderMailPreview();
 }
 
 // ---------------- events ----------------
@@ -2515,7 +2549,13 @@ function wire() {
   $('#mailCode').addEventListener('change', readMailCode);
   $('#mailKey').addEventListener('change', readMailCode);
   ['#mailFrom', '#mailSubject', '#mailBody'].forEach(id => $(id).addEventListener('input', saveMailFields));
-  $('#mailPeriod').addEventListener('change', renderMailTable);
+  // remember the cursor in the subject or message so the insert buttons know where to put a fill-in
+  ['#mailSubject', '#mailBody'].forEach(id => ['focus', 'click', 'keyup', 'select', 'input', 'blur'].forEach(ev => $(id).addEventListener(ev, e => {
+    MAIL_FIELD.el = e.target; MAIL_FIELD.start = e.target.selectionStart ?? e.target.value.length; MAIL_FIELD.end = e.target.selectionEnd ?? MAIL_FIELD.start;
+  })));
+  $('#mailTags').addEventListener('mousedown', e => { if (e.target.closest('[data-tag]')) e.preventDefault(); }); // keep the cursor in the text box
+  $('#mailTags').addEventListener('click', e => { const b = e.target.closest('[data-tag]'); if (b) insertTag(b.dataset.tag); });
+  $('#mailPeriod').addEventListener('change', () => { renderMailTable(); renderMailPreview(); });
   $('#btnPing').addEventListener('click', async () => {
     if (!readMailCode()) return;
     $('#mailStatus').textContent = 'Checking...';
