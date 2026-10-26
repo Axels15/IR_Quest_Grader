@@ -1016,7 +1016,7 @@ async function ingestBlob(name, blob, ctx, report) {
   if (RT.hashes.has(h)) { report && report(`Skipped duplicate ${name}`); return; }
   RT.hashes.add(h);
   const period = ctx.mixed ? null : (ctx.auto ? (periodFrom(ctx.path + '/' + name) ?? ctx.period) : ctx.period);
-  const base = { name, path: ctx.path ? ctx.path + '/' + name : name, container: ctx.container || '', period, mixed: !!ctx.mixed, text: '', pages: [], kind: ext };
+  const base = { name, path: ctx.path ? ctx.path + '/' + name : name, container: ctx.container || '', period, mixed: !!ctx.mixed, text: '', pages: [], kind: ext, hash: h };
   report && report(`Reading ${name}`);
   try {
     if (ext === 'zip') {
@@ -1770,7 +1770,8 @@ function renderFiles() {
   if (!docs.length) { $('#fileTable').innerHTML = '<tr><td class="hint">No files yet.</td></tr>'; return; }
   const sorted = docs.slice().sort((a, b) => (a.period ?? 99) - (b.period ?? 99) || natCmp(a.path, b.path));
   $('#fileTable').innerHTML = `<tr><th>File</th><th>Period</th><th>Pages</th><th>Status</th></tr>` + sorted.map(d => `<tr>
-    <td class="fname">${esc(d.name)}${d.container ? `<div class="hint">in ${esc(d.container)}</div>` : ''}${d.note ? `<div class="hint">${esc(d.note)}</div>` : ''}</td>
+    <td class="fname">${esc(d.name)}${d.container ? `<div class="hint">in ${esc(d.container)}</div>` : ''}${d.note ? `<div class="hint">${esc(d.note)}</div>` : ''}
+      <div><button class="linkbtn" data-rmdoc="${esc(d.id)}">Remove</button></div></td>
     <td>${d.period ?? 'Any'}</td><td>${d.pages.length || (d.text ? 'text' : '0')}</td><td>${docStatusChip(d)}</td></tr>${(() => {
       // pages from this file that still need a name, right under it
       let un = unassignedParts().filter(p => p.docId === d.id);
@@ -2564,6 +2565,14 @@ function wire() {
     try { const n = await runSplit(); if (!n) setProg('runProg', 1, 'No unnamed files to sort.'); else setProg('runProg', 1, 'Sorted. Check the Files list, then grade.'); } finally { setRunning(false); }
   });
   $('#btnStop').addEventListener('click', () => { RT.stop = true; toast('Stopping after the current requests finish...'); });
+  $('#fileTable').addEventListener('click', e => {
+    const b = e.target.closest('[data-rmdoc]'); if (!b) return;
+    const d = RT.docs.find(x => x.id === b.dataset.rmdoc); if (!d) return;
+    if (!confirm(`Remove ${d.name}? Grades already made stay.`)) return;
+    RT.docs = RT.docs.filter(x => x !== d); RT.parts = RT.parts.filter(p => p.docId !== d.id);
+    if (d.hash) RT.hashes.delete(d.hash);  // so the same file can be uploaded again
+    renderAll(); toast(`Removed ${d.name}.`);
+  });
   $('#btnClearFiles').addEventListener('click', () => { if (confirm('Remove all uploaded files? Grades already made stay.')) { RT.docs = []; RT.parts = []; RT.hashes.clear(); renderAll(); } });
   // review
   $('#adjTable').addEventListener('change', e => {
