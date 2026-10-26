@@ -1910,6 +1910,7 @@ function renderSend() {
 const MAILER_SCRIPT = `// Rubric Mailer: paste into a new Apps Script project, then
 // Deploy > New deployment > Web app (Execute as: Me, Who has access: Anyone).
 const SECRET = 'CHANGE-ME-to-a-long-random-phrase';
+const SCRIPT_VERSION = 3;
 
 function doPost(e) {
   try {
@@ -1919,17 +1920,27 @@ function doPost(e) {
     }
     const me = Session.getEffectiveUser().getEmail();
     if (req.action === 'ping') {
-      return reply_({ ok: true, me: me, remaining: MailApp.getRemainingDailyQuota(), version: 2, classroom: typeof Classroom !== 'undefined' });
+      return reply_({ ok: true, me: me, remaining: MailApp.getRemainingDailyQuota(), version: SCRIPT_VERSION, classroom: typeof Classroom !== 'undefined' });
     }
     if (req.action === 'courses') return reply_({ ok: true, courses: listCourses_() });
     if (req.action === 'post') return reply_(postAssignment_(req));
     const to = req.action === 'test' ? me : String(req.to || '').trim();
     if (!to) return reply_({ ok: false, error: 'No email address for this student.' });
     if (!req.pdfBase64) return reply_({ ok: false, error: 'No PDF was attached.' });
+
+    // If Google lost the reply to an email that did go out, the tool retries with the same
+    // requestId. Remember sent IDs for 6 hours so a retry never sends a second copy.
+    const cache = CacheService.getScriptCache();
+    const cacheKey = req.requestId && req.action !== 'test' ? 'sent_' + String(req.requestId).slice(0, 200) : null;
+    if (cacheKey && cache.get(cacheKey)) {
+      return reply_({ ok: true, to: to, duplicate: true, remaining: MailApp.getRemainingDailyQuota() });
+    }
+
     const pdf = Utilities.newBlob(Utilities.base64Decode(req.pdfBase64), 'application/pdf', req.filename || 'rubric.pdf');
     const options = { attachments: [pdf] };
     if (req.fromName) options.name = req.fromName;
     GmailApp.sendEmail(to, req.subject || 'Your rubric', req.body || '', options);
+    if (cacheKey) cache.put(cacheKey, '1', 21600);
     return reply_({ ok: true, to: to, remaining: MailApp.getRemainingDailyQuota() });
   } catch (err) {
     return reply_({ ok: false, error: String((err && err.message) || err) });
@@ -2042,7 +2053,8 @@ async function sendMail(test) {
   const one = async s => {
     MAIL.status[s.key] = { busy: true }; renderMailTable();
     const pdf = buildPdf(s).output('datauristring').split(',')[1];
-    const payload = { action: test ? 'test' : 'send', to: s.email, fromName: S.mail.fromName, filename: pdfName(s), pdfBase64: pdf,
+    // same requestId on every retry, so the mailer can skip a send that already went out
+    const payload = { action: test ? 'test' : 'send', requestId: uid() + uid(), to: s.email, fromName: S.mail.fromName, filename: pdfName(s), pdfBase64: pdf,
       subject: (test ? '[TEST] ' : '') + fillTpl(S.mail.subject, s), body: fillTpl(S.mail.body, s) };
     for (let a = 0; a < 3; a++) {
       try {
