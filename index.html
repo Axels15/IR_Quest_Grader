@@ -291,10 +291,8 @@ pre.code { background: var(--desk); padding: 10px; border-radius: 6px; overflow:
 
     <div class="card span2">
       <div class="card-head"><h2>Didn't ask for everything on the card?</h2></div>
-      <p class="hint">Check off anything students weren't told to do this time. Claude won't take points off for it or list it as a grow. Only this assignment changes. The quest cards stay the same.</p>
-      <label class="row" style="margin-top:10px"><input type="checkbox" id="aNoParagraph"> <span>Don't require the <b>one paragraph explanation of their choices</b></span></label>
-      <label class="f" for="aSkip">Anything else they weren't asked for (one per line)</label>
-      <textarea id="aSkip" rows="2" placeholder="Internal dialogue&#10;At least 25 texts"></textarea>
+      <p class="hint">For each period, check off anything students weren't told to do this time. Claude won't take points off for it or list it as a grow. Only this assignment changes. The quest cards stay the same.</p>
+      <div class="rubric-wrap" style="margin-top:10px"><table class="adj-table" id="skipTable"></table></div>
       <div id="skipStatus" style="margin-top:10px"></div>
     </div>
 
@@ -639,8 +637,8 @@ function freshState() {
   return {
     v: 2,
     settings: { apiKey: '', model: 'claude-sonnet-5-5', customModel: '', parallel: 3 },
-    // noParagraph / skip: requirements students weren't asked for on this assignment
-    assignment: { title: 'IR Quest', date: todayISO(), points: 100, minPass: 65, noParagraph: false, skip: '' },
+    // skips: period -> {para, other}: requirements that period wasn't asked for on this assignment
+    assignment: { title: 'IR Quest', date: todayISO(), points: 100, minPass: 65, skips: {} },
     rubric: JSON.parse(JSON.stringify(DEFAULT_RUBRIC)),
     tasks: {},           // period -> [{name, text}]
     guidance: DEFAULT_GUIDANCE,
@@ -664,6 +662,15 @@ function mergeState(s) {
   if (s.rubric && JSON.stringify(s.rubric) === JSON.stringify(OLD_RUBRIC_V1)) s.rubric = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
   // v2: glows/grows print by default (comments now have their own setting, off by default)
   if ((s.v || 1) < 2) { if (s.adjust && s.adjust.gg) s.adjust.gg.all = true; s.v = base.v; }
+  // skipped requirements used to apply to every period at once: copy them to each period
+  if (s.assignment && ('noParagraph' in s.assignment || 'skip' in s.assignment)) {
+    const a = s.assignment, skips = a.skips || {};
+    if (a.noParagraph || String(a.skip || '').trim()) {
+      const ps = new Set([...(s.roster || []).map(x => x.period), ...Object.keys(s.tasks || {}).map(Number)].filter(p => p != null));
+      ps.forEach(p => { if (!skips[p]) skips[p] = { para: !!a.noParagraph, other: a.skip || '' }; });
+    }
+    a.skips = skips; delete a.noParagraph; delete a.skip;
+  }
   if (s.adjust) s.adjust = { level: { ...base.adjust.level, ...s.adjust.level }, gg: { ...base.adjust.gg, ...s.adjust.gg }, cm: { ...base.adjust.cm, ...s.adjust.cm } };
   // quests picked before the explanation paragraph was added get the new card text
   for (const ts of Object.values(s.tasks || {})) for (const t of ts || []) {
@@ -783,7 +790,7 @@ function levelChanged(key) {
 }
 function reqChanged(key) {
   const r = S.results[key];
-  return !!(r && r.gradedAt && rowState(key) === 'graded' && (r.req || '') !== reqKey());
+  return !!(r && r.gradedAt && rowState(key) === 'graded' && (r.req || '') !== reqKey(stu(key).period));
 }
 function stale(key) { return levelChanged(key) || reqChanged(key); }
 // false when the rubric shape changed since grading (wrong number of rows, or a score above the top level)
@@ -1429,28 +1436,29 @@ function gradeTool() {
   };
 }
 // quest text as students saw it for this assignment
-function questText(t) {
+function skipsFor(period) { return (S.assignment.skips || {})[period] || { para: false, other: '' }; }
+function questText(t, period) {
   const s = String(t.text || '');
-  return S.assignment.noParagraph ? s.replace(EXPLAIN_LINE.trim(), '').replace(/\s+$/, '') : s;
+  return skipsFor(period).para ? s.replace(EXPLAIN_LINE.trim(), '').replace(/\s+$/, '') : s;
 }
 function taskBlock(period) {
   const ts = (S.tasks[period] || []).filter(t => (t.text || t.name || '').trim());
   if (!ts.length) return 'No quest text was entered for this period. Judge whether the work is a thoughtful creative response to the student\'s reading.';
-  if (ts.length === 1) return `${ts[0].name ? ts[0].name + ': ' : ''}${questText(ts[0])}`;
-  return 'Students could choose one of these:\n' + ts.map((t, i) => `Option ${i + 1}. ${t.name ? t.name + ': ' : ''}${questText(t)}`).join('\n');
+  if (ts.length === 1) return `${ts[0].name ? ts[0].name + ': ' : ''}${questText(ts[0], period)}`;
+  return 'Students could choose one of these:\n' + ts.map((t, i) => `Option ${i + 1}. ${t.name ? t.name + ': ' : ''}${questText(t, period)}`).join('\n');
 }
-function skipList() {
-  const a = S.assignment;
-  return [a.noParagraph ? 'The one paragraph explanation of their choices (other parts of the quest that are explanations, like static/dynamic, are still required)' : '']
-    .concat(String(a.skip || '').split('\n').map(x => x.trim().replace(/^[-*•]\s*/, '')))
+function skipList(period) {
+  const k = skipsFor(period);
+  return [k.para ? 'The one paragraph explanation of their choices (other parts of the quest that are explanations, like static/dynamic, are still required)' : '']
+    .concat(String(k.other || '').split('\n').map(x => x.trim().replace(/^[-*•]\s*/, '')))
     .filter(Boolean);
 }
-function skipBlock() {
-  const l = skipList();
+function skipBlock(period) {
+  const l = skipList(period);
   return l.length ? `\n\nNOT REQUIRED ON THIS ASSIGNMENT\nStudents were not asked for these this time, even if the quest card mentions them. Don't lower any score for leaving them out, don't flag them as missing or incomplete, and don't list them in grows or the comment. If a student did include one, you can still give credit for it.\n` + l.map(x => '- ' + x).join('\n') : '';
 }
 // what was not required when a student was graded, so changes can be spotted
-function reqKey() { return skipList().join('|'); }
+function reqKey(period) { return skipList(period).join('|'); }
 function rubricBlock() {
   const L = S.rubric.levels;
   return S.rubric.criteria.map((c, ci) => `${c}\n` + L.map((l, li) => `  ${pointsForLevel(li)} points (${l}): ${S.rubric.descriptions[ci + '_' + li] || ''}`).join('\n')).join('\n');
@@ -1464,7 +1472,7 @@ function gradeSystem(period, key) {
   return `You are helping Mr. Axelson, a 7th grade ELA teacher at a public middle school, grade "${S.assignment.title}", a creative response students make about their independent reading book. You will see one student's submission: scans, photos, slides, or text from their document. Record the grade with the record_grade tool.
 
 THE QUEST FOR PERIOD ${period}
-${taskBlock(period)}${skipBlock()}
+${taskBlock(period)}${skipBlock(period)}
 
 RUBRIC (whole points only, ${nLev()} is highest and 1 is lowest)
 ${rubricBlock()}
@@ -1524,7 +1532,7 @@ async function gradeStudent(key) {
       book: out.book_title || '', task: out.task_done || '', onTask: out.on_task !== false,
       nameOnWork: out.name_on_work || '', evidence: out.reading_evidence || '',
       flags: (out.flags || []).filter(f => FLAG_TYPES[f.type]), teacherNote: out.teacher_note || '', comment: out.student_comment || '',
-      glows: bullets(out.glows), grows: bullets(out.grows), level, req: reqKey(),
+      glows: bullets(out.glows), grows: bullets(out.grows), level, req: reqKey(s.period),
       files: docs.map(d => d.name), sig, gradedAt: new Date().toISOString(), edited: false, model: modelId()
     };
   } catch (e) {
@@ -1605,7 +1613,7 @@ function renderAll() { renderHeader(); renderSetup(); renderUpPeriods(); renderF
 function renderSetup() {
   const a = S.assignment;
   $('#aTitle').value = a.title; $('#aDate').value = a.date; $('#aPoints').value = a.points; $('#aMin').value = a.minPass;
-  $('#aNoParagraph').checked = !!a.noParagraph; $('#aSkip').value = a.skip || '';
+  renderSkips();
   $('#guidance').value = S.guidance; $('#offTask').value = S.offTask;
   $('#apiKey').value = S.settings.apiKey; $('#model').value = S.settings.model; $('#customModel').value = S.settings.customModel;
   $('#customModelWrap').classList.toggle('hidden', S.settings.model !== 'custom');
@@ -1642,7 +1650,23 @@ async function regrade(keys, btn) {
   toast(errs ? `${keys.length - errs} graded again. ${errs} couldn't be graded: open their rows to see why.` : `Graded ${keys.length} again.`);
   renderAll(); if (S.ui.tab === 'review') renderReview();
 }
-// the "Didn't ask for everything" card: who was graded under the old requirements
+// the "Didn't ask for everything" card: one row per period
+function renderSkips() {
+  const ps = periods();
+  if (!ps.length) { $('#skipTable').innerHTML = '<tr><td class="hint">Upload a roster and each period will show up here.</td></tr>'; return; }
+  $('#skipTable').innerHTML = `<thead><tr><th>Period</th><th>Don't require the one paragraph explanation of their choices</th><th>Anything else they weren't asked for (one per line)</th></tr></thead><tbody>` +
+    ps.map(p => { const k = skipsFor(p); return `<tr><td>Period ${p}</td>
+      <td><label class="row"><input type="checkbox" data-skpara="${p}" ${k.para ? 'checked' : ''}> Not required</label></td>
+      <td><textarea data-skother="${p}" rows="1" placeholder="Internal dialogue" aria-label="Other requirements Period ${p} wasn't asked for">${esc(k.other || '')}</textarea></td></tr>`; }).join('') +
+    (ps.length > 1 ? `<tr><td></td><td><button class="linkbtn" id="btnSkipAll">Check for all periods</button> <button class="linkbtn" id="btnSkipNone">Uncheck all</button></td><td></td></tr>` : '') + '</tbody>';
+}
+function setSkip(p, field, val) {
+  const all = S.assignment.skips = S.assignment.skips || {};
+  all[p] = { ...skipsFor(p), [field]: val };
+  if (!all[p].para && !String(all[p].other || '').trim()) delete all[p];
+  save();
+}
+// who was graded under the old requirements
 function renderSkipStatus() {
   const changed = S.roster.filter(st => reqChanged(st.key));
   if (!changed.length) { $('#skipStatus').innerHTML = ''; return; }
@@ -2302,8 +2326,8 @@ function crGuessPeriod(c) {
 }
 function crDescription(p) {
   const ts = (S.tasks[p] || []).filter(t => (t.text || t.name || '').trim());
-  const quest = !ts.length ? '' : ts.length === 1 ? `${ts[0].name ? ts[0].name + ': ' : ''}${questText(ts[0])}`
-    : 'Choose one:\n' + ts.map((t, i) => `${i + 1}. ${t.name ? t.name + ': ' : ''}${questText(t)}`).join('\n');
+  const quest = !ts.length ? '' : ts.length === 1 ? `${ts[0].name ? ts[0].name + ': ' : ''}${questText(ts[0], p)}`
+    : 'Choose one:\n' + ts.map((t, i) => `${i + 1}. ${t.name ? t.name + ': ' : ''}${questText(t, p)}`).join('\n');
   return [quest, (S.classroom.note || '').trim()].filter(Boolean).join('\n\n');
 }
 // Classroom stores due dates in UTC
@@ -2398,7 +2422,7 @@ function wire() {
     S.results = {}; RT.docs = []; RT.parts = []; RT.hashes.clear(); RT.open = null; CR.touched = false; CR.status = {};
     const m = String(S.assignment.title).match(/^(.*?)(\d+)\s*$/);
     if (m) S.assignment.title = m[1] + (Number(m[2]) + 1);
-    S.assignment.date = todayISO(); S.assignment.noParagraph = false; S.assignment.skip = '';
+    S.assignment.date = todayISO(); S.assignment.skips = {};
     save(); renderAll(); toast('Ready for a new assignment.');
   });
   // roster
@@ -2476,8 +2500,15 @@ function wire() {
     if (t.dataset.crpick) { CR.touched = true; t.checked ? CR.checked.add(Number(t.dataset.crpick)) : CR.checked.delete(Number(t.dataset.crpick)); }
   });
   $('#btnCopyScript2').addEventListener('click', async () => { try { await navigator.clipboard.writeText(MAILER_SCRIPT); toast('Script copied.'); } catch (e) { toast('Open the Export and email tab and copy the script from there.'); } });
-  $('#aNoParagraph').addEventListener('change', e => { S.assignment.noParagraph = e.target.checked; save(); renderSkipStatus(); });
-  $('#aSkip').addEventListener('input', e => { S.assignment.skip = e.target.value; save(); clearTimeout(renderSkipStatus._t); renderSkipStatus._t = setTimeout(renderSkipStatus, 400); });
+  $('#skipTable').addEventListener('change', e => { const p = e.target.dataset.skpara; if (p) { setSkip(p, 'para', e.target.checked); renderSkipStatus(); } });
+  $('#skipTable').addEventListener('input', e => {
+    const p = e.target.dataset.skother; if (!p) return;
+    setSkip(p, 'other', e.target.value); clearTimeout(renderSkipStatus._t); renderSkipStatus._t = setTimeout(renderSkipStatus, 400);
+  });
+  $('#skipTable').addEventListener('click', e => {
+    const on = e.target.closest('#btnSkipAll'), off = e.target.closest('#btnSkipNone'); if (!on && !off) return;
+    periods().forEach(p => setSkip(p, 'para', !!on)); renderSkips(); renderSkipStatus();
+  });
   // guidance + claude
   $('#guidance').addEventListener('input', e => { S.guidance = e.target.value; save(); });
   $('#btnGuidanceDefault').addEventListener('click', () => {
