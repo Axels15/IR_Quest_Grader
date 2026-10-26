@@ -1771,7 +1771,13 @@ function renderFiles() {
   const sorted = docs.slice().sort((a, b) => (a.period ?? 99) - (b.period ?? 99) || natCmp(a.path, b.path));
   $('#fileTable').innerHTML = `<tr><th>File</th><th>Period</th><th>Pages</th><th>Status</th></tr>` + sorted.map(d => `<tr>
     <td class="fname">${esc(d.name)}${d.container ? `<div class="hint">in ${esc(d.container)}</div>` : ''}${d.note ? `<div class="hint">${esc(d.note)}</div>` : ''}</td>
-    <td>${d.period ?? 'Any'}</td><td>${d.pages.length || (d.text ? 'text' : '0')}</td><td>${docStatusChip(d)}</td></tr>`).join('');
+    <td>${d.period ?? 'Any'}</td><td>${d.pages.length || (d.text ? 'text' : '0')}</td><td>${docStatusChip(d)}</td></tr>${(() => {
+      // pages from this file that still need a name, right under it
+      let un = unassignedParts().filter(p => p.docId === d.id);
+      // not sorted yet: offer the whole file so it can be named without Claude
+      if (!un.length && d.status === 'stack' && !RT.parts.some(p => p.docId === d.id)) un = [{ id: 'doc:' + d.id, docId: d.id, pages: null, kind: 'work', aiName: '', note: '' }];
+      return un.length ? `<tr class="unmatched-row"><td colspan="4"><div class="tray-grid">${un.map(p => trayItem(p, 8)).join('')}</div></td></tr>` : '';
+    })()}`).join('');
 }
 async function handleUpload(files) {
   if (!files.length) return;
@@ -1927,18 +1933,22 @@ function adjustHtml(s, r) {
 function renderTray() {
   const un = unassignedParts();
   if (!un.length) { $('#tray').innerHTML = ''; return; }
-  const opts = S.roster.slice().sort((a, b) => a.period - b.period || natCmp(a.last, b.last))
-    .map(x => `<option value="${esc(x.key)}">P${x.period} ${esc(x.last)}, ${esc(x.first)}</option>`).join('');
   $('#tray').innerHTML = `<details class="tray" ${un.length <= 12 ? 'open' : ''}><summary><h3>Work without a name (${un.length})</h3> <span class="hint">Pick the student and it gets graded. Ignore anything that isn't this assignment.</span></summary>
-    <div class="tray-grid">${un.map(p => {
-      const d = RT.docs.find(x => x.id === p.docId); const pg = partPages(p);
-      return `<div class="tray-item"><div><b>${esc(d ? d.name : '')}</b>${p.pages ? ` <span class="hint">page${p.pages.length > 1 ? 's' : ''} ${p.pages.map(i => i + 1).join(', ')}</span>` : ''}</div>
-        <div class="thumbs">${pg.slice(0, 4).map((x, i) => `<img src="${x.url}" alt="page ${x.n}" data-lbpart="${p.id}" data-i="${i}">`).join('')}</div>
-        ${p.aiName ? `<p>Name Claude saw: <b>${esc(p.aiName)}</b></p>` : ''}${p.kind === 'other' ? '<p><span class="chip">Looks like a different assignment</span></p>' : ''}
-        ${p.note ? `<p class="hint">${esc(p.note)}</p>` : ''}
-        <div class="row"><select data-assign="${p.id}" style="flex:1"><option value="">Whose work is this?</option>${opts}</select>
-        <button class="btn small" data-ignore="${p.id}">Ignore</button></div></div>`;
-    }).join('')}</div></details>`;
+    <div class="tray-grid">${un.map(p => trayItem(p, 4)).join('')}</div></details>`;
+}
+function rosterOptions() {
+  return S.roster.slice().sort((a, b) => a.period - b.period || natCmp(a.last, b.last))
+    .map(x => `<option value="${esc(x.key)}">P${x.period} ${esc(x.last)}, ${esc(x.first)}</option>`).join('');
+}
+// one piece of work without a name: its pages, what Claude saw, and a student picker
+function trayItem(p, maxThumbs) {
+  const d = RT.docs.find(x => x.id === p.docId); const pg = partPages(p);
+  return `<div class="tray-item"><div><b>${esc(d ? d.name : '')}</b>${p.pages ? ` <span class="hint">page${p.pages.length > 1 ? 's' : ''} ${p.pages.map(i => i + 1).join(', ')}</span>` : ''}</div>
+    <div class="thumbs">${pg.slice(0, maxThumbs).map((x, i) => `<img src="${x.url}" alt="page ${x.n}" data-lbpart="${p.id}" data-i="${i}">`).join('')}${pg.length > maxThumbs ? `<span class="hint">+${pg.length - maxThumbs} more (tap a page to see all)</span>` : ''}</div>
+    ${p.aiName ? `<p>Name Claude saw: <b>${esc(p.aiName)}</b></p>` : ''}${p.kind === 'other' ? '<p><span class="chip">Looks like a different assignment</span></p>' : ''}
+    ${p.note ? `<p class="hint">${esc(p.note)}</p>` : ''}
+    <div class="row"><select data-assign="${p.id}" style="flex:1"><option value="">Whose work is this?</option>${rosterOptions()}</select>
+    <button class="btn small" data-ignore="${p.id}">Ignore</button></div></div>`;
 }
 function openLightbox(list, i) {
   RT.lb = { list, i };
@@ -1949,8 +1959,16 @@ function showLb() {
   $('#lbImg').src = p.url; $('#lbImg').alt = `${p.doc.name} page ${p.n}`;
   $('#lbCap').textContent = `${p.doc.name}, page ${p.n} (${i + 1} of ${list.length})`;
 }
+// a whole unsorted file offered on the Upload tab ("doc:<id>") becomes a real piece of work when used
+function partFor(id) {
+  const p = RT.parts.find(x => x.id === id); if (p || !String(id).startsWith('doc:')) return p;
+  const d = RT.docs.find(x => x.id === id.slice(4)); if (!d) return null;
+  const np = { id: uid(), docId: d.id, pages: null, studentKey: null, source: 'you', aiName: '', kind: 'work', note: '' };
+  RT.parts.push(np); d.status = 'split';
+  return np;
+}
 async function assignPart(partId, key) {
-  const p = RT.parts.find(x => x.id === partId); if (!p) return;
+  const p = partFor(partId); if (!p) return;
   p.studentKey = key; p.kind = p.kind === 'other' ? 'work' : p.kind; p.source = 'you';
   renderAll();
   if (S.settings.apiKey && workParts(key).length) {
@@ -2641,11 +2659,18 @@ function wire() {
     const uf = e.target.closest('[data-unflag]');
     if (uf) { const r = S.results[uf.dataset.unflag]; r.flags.splice(Number(uf.dataset.i), 1); save(); renderReview(); }
   });
-  $('#tray').addEventListener('change', e => { const t = e.target; if (t.dataset.assign && t.value) assignPart(t.dataset.assign, t.value); });
-  $('#tray').addEventListener('click', e => {
-    const ig = e.target.closest('[data-ignore]'); if (ig) { const p = RT.parts.find(x => x.id === ig.dataset.ignore); if (p) p.ignored = true; renderReview(); renderFiles(); return; }
-    const img = e.target.closest('img[data-lbpart]'); if (img) { const p = RT.parts.find(x => x.id === img.dataset.lbpart); openLightbox(partPages(p), Number(img.dataset.i)); }
-  });
+  // unnamed work: the box on the Review tab and the rows under each file on the Upload tab
+  for (const el of [$('#tray'), $('#fileTable')]) {
+    el.addEventListener('change', e => { const t = e.target; if (t.dataset.assign && t.value) assignPart(t.dataset.assign, t.value); });
+    el.addEventListener('click', e => {
+      const ig = e.target.closest('[data-ignore]'); if (ig) { const p = partFor(ig.dataset.ignore); if (p) p.ignored = true; renderFiles(); if (S.ui.tab === 'review') renderReview(); return; }
+      const img = e.target.closest('img[data-lbpart]');
+      if (img) {
+        const id = img.dataset.lbpart, p = RT.parts.find(x => x.id === id) || (id.startsWith('doc:') ? { docId: id.slice(4), pages: null } : null);
+        if (p) openLightbox(partPages(p), Number(img.dataset.i));
+      }
+    });
+  }
   // lightbox
   $('#lbPrev').addEventListener('click', () => { RT.lb.i = (RT.lb.i - 1 + RT.lb.list.length) % RT.lb.list.length; showLb(); });
   $('#lbNext').addEventListener('click', () => { RT.lb.i = (RT.lb.i + 1) % RT.lb.list.length; showLb(); });
