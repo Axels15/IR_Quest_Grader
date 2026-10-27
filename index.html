@@ -602,7 +602,7 @@ Reward specific details that only come from reading the book: character names, p
 A 3 means the student went above and beyond. A 2 is solid, ordinary work. A 1 means very little effort, very little of the task, or almost nothing that shows reading.
 
 Watch for signs that a student used AI or copied text instead of reading: adult-sounding polished phrasing, summaries that read like the back cover or a website, general statements with no specific details, or two different versions of the same work. It can be hard to tell, so flag it for me and explain why, but score the work as written.`;
-const DEFAULT_GUIDANCE = `Grade in an easy-going, generous way. These quests exist to show that students are actually doing their independent reading and putting some thought into the assignment. The work doesn't need to be amazing. A typical student who did the quest with real effort and details from their book should land at 3 on every row.
+const OLD_GUIDANCE_V3 = `Grade in an easy-going, generous way. These quests exist to show that students are actually doing their independent reading and putting some thought into the assignment. The work doesn't need to be amazing. A typical student who did the quest with real effort and details from their book should land at 3 on every row.
 
 Reward specific details that only come from reading the book: character names, particular events, page numbers, quotes, small moments. Polish, art skill, spelling, and handwriting matter much less than evidence of reading and real effort.
 
@@ -613,6 +613,13 @@ Give the benefit of the doubt. Read "meets all requirements" generously: if the 
 The Evidence of Independent Reading row is about whether the work shows the student has actually been reading the book on their own over the past couple of weeks, not just skimming the cover, a summary, or the first chapter. Specific, accurate details from deeper in the book are the strongest sign.
 
 Watch for signs that a student used AI or copied text instead of reading: adult-sounding polished phrasing, summaries that read like the back cover or a website, general statements with no specific details, or two different versions of the same work. It can be hard to tell, so flag it for me and explain why, but score the work as written.`;
+// when a 4 is earned: without this, Claude saved 4s for flawless work
+const GUIDANCE_FOURS = `Don't save 4s for perfect work. Give a 4 on a row when the work clearly goes beyond what the quest asked for in that row, even if one small piece is thin or missing (name that piece in grows). Signs of a 4:
+- Creative Expression: careful, colorful, well-planned design; drawings, layout, or ideas that show real thought and time.
+- Task Criteria: more than the minimum, like extra characters, more traits than asked, extra sections, or longer explanations, even if one small requirement is thin.
+- Evidence of Independent Reading: several specific details from across the book (names, places, plot events, a real quote) that only someone reading closely would know.
+Each row is scored on its own. Many students who put in real effort should earn 4s.`;
+const DEFAULT_GUIDANCE = OLD_GUIDANCE_V3.replace('name the missing piece in grows instead.', 'name the missing piece in grows instead.\n\n' + GUIDANCE_FOURS);
 const OLD_GUIDANCE_V2 = `Grade in an easy-going way. These quests exist to show that students are actually doing their independent reading and putting some thought into the assignment. The work doesn't need to be amazing.
 
 Reward specific details that only come from reading the book: character names, particular events, page numbers, quotes, small moments. Polish, art skill, spelling, and handwriting matter much less than evidence of reading and real effort.
@@ -659,7 +666,7 @@ let S = loadState();
 // Fill in anything an older save or backup is missing, and upgrade old defaults
 function mergeState(s) {
   const base = freshState();
-  if (s.guidance === OLD_GUIDANCE_V1 || s.guidance === OLD_GUIDANCE_V2) s.guidance = DEFAULT_GUIDANCE;
+  if ([OLD_GUIDANCE_V1, OLD_GUIDANCE_V2, OLD_GUIDANCE_V3].includes(s.guidance)) s.guidance = DEFAULT_GUIDANCE;
   if (s.rubric && JSON.stringify(s.rubric) === JSON.stringify(OLD_RUBRIC_V1)) s.rubric = JSON.parse(JSON.stringify(DEFAULT_RUBRIC));
   // v2: glows/grows print by default (comments now have their own setting, off by default)
   if ((s.v || 1) < 2) { if (s.adjust && s.adjust.gg) s.adjust.gg.all = true; s.v = base.v; }
